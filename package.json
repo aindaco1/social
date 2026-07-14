@@ -21,6 +21,7 @@
         "desktop:github:release-secrets:plan": "node scripts/configure-github-release-secrets.mjs",
         "desktop:release:preflight": "node scripts/desktop-release-preflight.mjs",
         "desktop:release:preflight:strict": "node scripts/desktop-release-preflight.mjs --strict",
+        "desktop:release:artifact-check": "node scripts/verify-macos-release-artifacts.mjs",
         "desktop:smoke:launch": "node scripts/smoke-launch-macos.mjs",
         "desktop:build:with-media": "npm run desktop:media:check && tauri build --config src-tauri/tauri.media-sidecars.conf.json && npm run desktop:adhoc-sign",
         "desktop:build:with-updater": "node scripts/build-desktop-release.mjs --updater",

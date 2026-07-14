@@ -1,6 +1,6 @@
 # Dust Wave Finish-Line Checklist
 
-This is the external and acceptance work remaining after the local Tauri/Rust migration foundation and Pool/Store design-language pass. The app now automates the provider setup packet, account onboarding packet, local Developer ID signing wrapper, and updater key generation from live local state. Provider portals, OAuth approvals, final GitHub release hosting, Apple notarization issuer details, and live-provider acceptance still require an operator.
+This is the external and acceptance work remaining after the local Tauri/Rust migration foundation and Pool/Store design-language pass. The app now automates the provider setup packet, account onboarding packet, local Developer ID signing wrapper, updater key generation, LGPL-only FFmpeg/FFprobe sidecar builds, and signed GitHub Actions bundle builds from live local or CI state. Provider portals, OAuth approvals, Apple notarization acceptance, clean-machine installation, and live-provider acceptance still require an operator.
 
 ## Design And Brand
 
@@ -15,11 +15,13 @@ This is the external and acceptance work remaining after the local Tauri/Rust mi
 - Enroll or confirm access to the Dust Wave Apple Developer account.
 - Local Developer ID signing is automated from the sibling iCloud `Apple Auth` folder when it contains `developer-id-application.p12` and `apple-p12-password.txt`.
 - App Store Connect API key discovery is automated from `Apple Auth/AuthKey_<key-id>.p8`.
-- Add the App Store Connect issuer UUID to `Apple Auth/apple-api-issuer.txt`; this is the current blocker for automated notarization.
-- GitHub release secrets and variables have been configured for `aindaco1/social` except `APPLE_API_ISSUER`, which still needs the issuer UUID.
+- Confirm `Apple Auth/apple-api-issuer.txt` exists before submitting to Apple. If a submission is already `In Progress`, keep the current DMG in place and resume it with `npm run desktop:macos:notarize:wait -- <submission-id>` instead of uploading a duplicate.
+- GitHub release secrets and variables are configured for signed media/updater bundle builds in `aindaco1/social`. CI notarization is intentionally not enabled by default until the Apple API key, issuer, and GitHub secret path are revalidated in GitHub Actions.
 - Run `npm run desktop:release:check` with signing variables present and confirm the build, format check, and Rust tests pass.
 - Run `npm run desktop:release:build:signed:with-media` to build a signed Apple Silicon `.app` and signed `.dmg` with bundled LGPL-only media sidecars.
-- Run `npm run desktop:macos:notarize` after the issuer UUID is available, then confirm the stapled DMG passes `spctl`.
+- Run `npm run desktop:release:artifact-check -- --require-updater` before notarization acceptance to verify the signed app, hardened runtime, bundled sidecars, DMG checksum, and updater manifest without requiring a stapled ticket.
+- Run `npm run desktop:macos:notarize` when submitting a new signed DMG, then confirm the stapled DMG passes `spctl`. If the wait times out while Apple still reports `In Progress`, rerun `npm run desktop:macos:notarize:wait -- <submission-id>`.
+- After Apple returns `Accepted`, run `npm run desktop:release:artifact-check -- --require-updater --require-stapled` to verify the stapled DMG and Gatekeeper assessment.
 - Local unsigned builds are automatically ad-hoc signed for smoke testing, but ad-hoc signing is not a distribution substitute.
 - The signed wrapper creates the DMG directly with `hdiutil` instead of Tauri's local DMG helper, which previously hung.
 - Install the notarized DMG on a clean Mac and confirm Gatekeeper opens it without warnings.
@@ -33,6 +35,7 @@ This is the external and acceptance work remaining after the local Tauri/Rust mi
 - Use `npm run desktop:updater:check` or `npm run desktop:release:build:signed:with-media-and-updater`; local scripts infer `aindaco1/social` from `origin` when the environment does not set `DUSTWAVE_RELEASE_REPO`.
 - The generated updater overlay lives at `src-tauri/tauri.updater.generated.conf.json` and is ignored by git. Keep `src-tauri/tauri.updater.example.json` as the documented shape.
 - Updater builds generate `src-tauri/target/release/bundle/latest.json` beside the signed macOS artifacts. The manual GitHub Actions workflow can now fail closed when updater artifacts are requested but missing.
+- The signed media/updater GitHub Actions path has been validated on the `macos-26` Apple Silicon runner and uploads DMG, app zip, and updater artifacts when the workflow inputs request them.
 - Publish a test update from version `0.1.0` to a higher version and verify the installed app detects, downloads, validates, installs, and relaunches.
 - Define rollback policy for a bad release, including whether old installers remain available.
 
@@ -93,7 +96,7 @@ This is the external and acceptance work remaining after the local Tauri/Rust mi
 - Apple Silicon LGPL-only FFmpeg/FFprobe sidecars are staged from official FFmpeg 8.1.2 source with `npm run desktop:media:build-lgpl`.
 - Record the FFmpeg/FFprobe versions, configure lines, binary source, source archive/commit, and license output in `THIRD_PARTY_NOTICES.md` for each release. The current Apple Silicon sidecar record is filled in.
 - Re-stage approved portable media binaries when updating FFmpeg with `DUSTWAVE_FFMPEG_BINARY=/path/to/ffmpeg DUSTWAVE_FFPROBE_BINARY=/path/to/ffprobe npm run desktop:media:prepare`.
-- Build release artifacts with bundled media tools using `npm run desktop:release:build:with-media`.
+- Build local release artifacts with bundled media tools using `npm run desktop:release:build:signed:with-media`, or include updater artifacts with `npm run desktop:release:build:signed:with-media-and-updater`.
 - Confirm System reports bundled FFmpeg and FFprobe on a clean target Mac with no Homebrew FFmpeg installation.
 - Import local images, videos, and GIFs into the app and confirm thumbnails, sizes, MIME types, and cleanup behavior.
 - Download external media from URL and Unsplash using production credentials. Validate Klipy GIF search separately: search and preview should work with production credentials, selected Klipy items must not be saved as reusable media-library files, and any publish-time file fetch must be temporary, deleted after the publish attempt, and excluded from backups/support exports.
@@ -106,6 +109,7 @@ This is the external and acceptance work remaining after the local Tauri/Rust mi
 - Run `npm ci` from a clean checkout.
 - Run `npm run desktop:release:check` and confirm Vue build, Rust formatting, and Rust tests pass.
 - Run `npm run desktop:release:build` and confirm the macOS `.app` and `.dmg` are produced.
+- Run `npm run desktop:release:artifact-check` against the packaged artifacts.
 - Run `npm run desktop:smoke:launch` against the packaged `.app` before deleting local build artifacts.
 - Complete the ethical product acceptance section before signing release artifacts.
 - Test first launch with no existing app-data directory.
@@ -121,8 +125,8 @@ This is the external and acceptance work remaining after the local Tauri/Rust mi
 
 - Review untracked files before staging. Do not commit `src-tauri/target`, `resources/desktop/dist`, notarized DMGs, or local app-data.
 - Add CI secrets for signing, notarization, updater signing, and provider smoke-test credentials only in secure secret stores.
-- Run the desktop CI workflow manually once with secrets present.
-- Confirm generated release artifacts are uploaded only from CI or a controlled local release machine, preferably through the draft GitHub Release path in `.github/workflows/desktop.yml`. Use the workflow inputs for media sidecars and updater artifacts only after the corresponding secrets and sidecars are ready.
+- Run the desktop CI workflow manually with `build_bundle=true`, `build_media_sidecars=true`, and `build_updater_artifacts=true` after any release pipeline change.
+- Confirm generated release artifacts are uploaded only from CI or a controlled local release machine, preferably through the draft GitHub Release path in `.github/workflows/desktop.yml`. Use the workflow inputs for media sidecars and updater artifacts after the corresponding secrets are ready; do not use `publish_release=true` until the notarized DMG, release notes, and rollback plan are ready.
 - Tag the first signed release with a clear version, release notes, and migration warnings.
 
 ## Operations

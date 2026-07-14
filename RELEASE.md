@@ -29,6 +29,8 @@ Before signing or publishing artifacts, complete the release review checklist in
 
 The same workflow has a manual `workflow_dispatch` path. Set `build_bundle` to `true` to build and upload macOS `.app.zip` and `.dmg` artifacts from GitHub Actions. Optional inputs can request staged media sidecars and signed updater artifacts. Set `publish_release` to `true` with a `release_tag` to create a draft GitHub Release from those artifacts.
 
+GitHub Actions bundle builds are signed but do not notarize by default. Keep notarization on the controlled local release machine until the Apple API key, issuer, and GitHub secret path have been revalidated in CI. A signed CI artifact is not public-distribution-ready until the final shipped DMG is notarized, stapled, and accepted by Gatekeeper.
+
 Updater artifacts require `TAURI_SIGNING_PRIVATE_KEY`, optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_UPDATER_PUBLIC_KEY` in repository secrets or variables. The workflow now errors if updater artifacts are requested but no updater files are generated.
 
 ## Apple Auth Folder
@@ -79,6 +81,8 @@ After local verification, remove reproducible desktop build output without touch
 ```sh
 npm run desktop:clean
 ```
+
+Do not clean build output while a notarization submission is still pending. The submitted DMG must remain available so the wait command can staple the same artifact after Apple accepts it.
 
 ## Updater-Capable Build
 
@@ -178,6 +182,12 @@ npm run desktop:release:build:signed:with-media
 
 This creates a temporary signing keychain, signs the sidecars and app with the Developer ID Application identity, enables hardened runtime, creates a signed DMG with the app and an `/Applications` symlink, and restores the original keychain search list when it exits. The wrapper uses a direct `hdiutil` DMG path instead of Tauri's local DMG helper.
 
+Before notarization returns, verify the signed artifacts without requiring a stapled ticket:
+
+```sh
+npm run desktop:release:artifact-check -- --require-updater
+```
+
 After adding the App Store Connect issuer UUID to `Apple Auth/apple-api-issuer.txt`, submit and staple the signed DMG:
 
 ```sh
@@ -186,13 +196,19 @@ npm run desktop:macos:notarize
 
 Expected failure before the issuer file exists: `Missing Apple API issuer UUID`. Expected Gatekeeper result before notarization: `Unnotarized Developer ID`.
 
-If Apple accepts the upload but the local wait times out while the submission is still `In Progress`, resume the same submission without uploading a duplicate:
+If Apple accepts the upload but the local wait times out while the submission is still `In Progress`, keep the submitted DMG in place and resume the same submission without uploading a duplicate:
 
 ```sh
 npm run desktop:macos:notarize:wait -- <submission-id>
 ```
 
 When Apple returns `Accepted`, the script staples the DMG and runs `spctl`.
+
+After stapling, rerun the artifact verifier in strict notarization mode:
+
+```sh
+npm run desktop:release:artifact-check -- --require-updater --require-stapled
+```
 
 To check the current status without waiting or stapling:
 
