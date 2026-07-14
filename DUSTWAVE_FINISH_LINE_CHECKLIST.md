@@ -90,7 +90,7 @@ This is the external and acceptance work remaining after the local Tauri/Rust mi
 ## Media And Local Runtime
 
 - MVP decision: Apple Silicon macOS only. Intel and universal macOS sidecars are out of scope unless Dust Wave later changes distribution targets.
-- Apple Silicon LGPL-only FFmpeg/FFprobe sidecars are staged from official FFmpeg 8.1.2 source.
+- Apple Silicon LGPL-only FFmpeg/FFprobe sidecars are staged from official FFmpeg 8.1.2 source with `npm run desktop:media:build-lgpl`.
 - Record the FFmpeg/FFprobe versions, configure lines, binary source, source archive/commit, and license output in `THIRD_PARTY_NOTICES.md` for each release. The current Apple Silicon sidecar record is filled in.
 - Re-stage approved portable media binaries when updating FFmpeg with `DUSTWAVE_FFMPEG_BINARY=/path/to/ffmpeg DUSTWAVE_FFPROBE_BINARY=/path/to/ffprobe npm run desktop:media:prepare`.
 - Build release artifacts with bundled media tools using `npm run desktop:release:build:with-media`.

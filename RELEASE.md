@@ -125,7 +125,15 @@ Run this gate for every public release and for any internal release that changes
 
 Dust Wave Social can package `ffmpeg` and `ffprobe` as Tauri sidecars so target Macs do not need Homebrew or a separate FFmpeg install.
 
-First stage approved portable binaries for the current Rust target:
+For the Apple Silicon MVP release path, build and stage approved LGPL-only sidecars from the official FFmpeg source archive:
+
+```sh
+npm run desktop:media:build-lgpl
+```
+
+The script downloads `https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz`, verifies the SHA-256 recorded in `THIRD_PARTY_NOTICES.md`, builds with the LGPL-only configure flags listed there, and stages `ffmpeg-aarch64-apple-darwin` plus `ffprobe-aarch64-apple-darwin`.
+
+If you already have approved portable binaries, stage them explicitly for the current Rust target:
 
 ```sh
 DUSTWAVE_FFMPEG_BINARY=/absolute/path/to/ffmpeg \
@@ -142,6 +150,8 @@ npm run desktop:release:build:with-media
 The sidecar build uses `src-tauri/tauri.media-sidecars.conf.json`, which merges Tauri `bundle.externalBin` entries for `binaries/ffmpeg` and `binaries/ffprobe`. The staging script writes target-triple filenames such as `src-tauri/binaries/ffmpeg-aarch64-apple-darwin`, matching Tauri's sidecar requirement.
 
 Do not ship arbitrary Homebrew binaries as release sidecars. They are usually dynamically linked to `/opt/homebrew` libraries, commonly include GPL codec flags, and can still fail on clean Macs. Dust Wave's policy is LGPL-only FFmpeg/FFprobe sidecars. The staging script rejects binaries that report GPL licensing, `--enable-gpl`, `--enable-nonfree`, or common GPL codec flags.
+
+GitHub Actions runs the same LGPL source-build step when the Desktop workflow input `build_media_sidecars` is `true`.
 
 For every release with media sidecars, fill in the FFmpeg/FFprobe section in `THIRD_PARTY_NOTICES.md` and archive the matching source, binary source, version output, license output, and configure line.
 

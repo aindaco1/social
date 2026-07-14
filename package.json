@@ -10,6 +10,7 @@
         "desktop:build": "tauri build && npm run desktop:adhoc-sign",
         "desktop:adhoc-sign": "node scripts/sign-macos-bundle.mjs",
         "desktop:media:prepare": "node scripts/prepare-media-sidecars.mjs",
+        "desktop:media:build-lgpl": "node scripts/build-ffmpeg-lgpl-sidecars.mjs",
         "desktop:media:check": "node scripts/prepare-media-sidecars.mjs --check",
         "desktop:clean": "node scripts/clean-desktop-artifacts.mjs",
         "desktop:dmg:create": "node scripts/create-macos-dmg.mjs",

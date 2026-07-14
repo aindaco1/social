@@ -55,7 +55,7 @@ permissions:
 jobs:
   release-check:
     name: Release check
-    runs-on: macos-latest
+    runs-on: macos-26
 
     steps:
       - name: Checkout
@@ -80,7 +80,7 @@ jobs:
 
   release-bundle:
     name: macOS release bundle
-    runs-on: macos-latest
+    runs-on: macos-26
     if: github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true'
     permissions:
       contents: write
@@ -120,6 +120,19 @@ jobs:
             chmod 600 "$key_path"
             echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
           fi
+
+      - name: Cache LGPL FFmpeg sidecars
+        if: inputs.build_media_sidecars == 'true'
+        uses: actions/cache@v6
+        with:
+          path: src-tauri/target/ffmpeg-lgpl
+          key: ffmpeg-lgpl-8.1.2-macos-26-aarch64-${{ hashFiles('scripts/build-ffmpeg-lgpl-sidecars.mjs', 'THIRD_PARTY_NOTICES.md') }}
+
+      - name: Build LGPL FFmpeg sidecars
+        if: inputs.build_media_sidecars == 'true'
+        env:
+          DUSTWAVE_FFMPEG_SOURCE_CACHE: ${{ github.workspace }}/src-tauri/target/ffmpeg-lgpl
+        run: npm run desktop:media:build-lgpl
 
       - name: Build desktop bundle
         env:
