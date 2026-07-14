@@ -265,10 +265,18 @@ async function buildEnvironment(identity, teamId) {
         const privateKeyPath = authPath('tauri-updater-private.key');
         const passwordPath = authPath('tauri-updater-password.txt');
         const publicKeyPath = authPath('tauri-updater-public-key.txt');
-        const publicKey = fileExists(publicKeyPath) ? await readTrimmedFile(publicKeyPath) : '';
+        const privateKeyFromEnv = String(env.TAURI_SIGNING_PRIVATE_KEY || '').trim();
+        const privateKeyPathFromEnv = String(env.TAURI_SIGNING_PRIVATE_KEY_PATH || '').trim();
+        const passwordFromEnv = String(env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '').trim();
+        const publicKey = String(env.TAURI_UPDATER_PUBLIC_KEY || env.DUSTWAVE_TAURI_UPDATER_PUBLIC_KEY || '').trim()
+            || (fileExists(publicKeyPath) ? await readTrimmedFile(publicKeyPath) : '');
+        const hasPrivateKey = Boolean(privateKeyFromEnv)
+            || (Boolean(privateKeyPathFromEnv) && fileExists(privateKeyPathFromEnv))
+            || fileExists(privateKeyPath);
+        const password = passwordFromEnv || (fileExists(passwordPath) ? await readTrimmedFile(passwordPath) : '');
 
-        if (!fileExists(privateKeyPath) || !fileExists(passwordPath) || !publicKey) {
-            throw new Error('Updater artifacts requested, but updater keys are missing. Run npm run desktop:updater:keys first.');
+        if (!hasPrivateKey || !password || !publicKey) {
+            throw new Error('Updater artifacts requested, but updater signing values are missing. Run npm run desktop:updater:keys locally or configure CI updater secrets.');
         }
 
         const releaseRepository = String(env.DUSTWAVE_RELEASE_REPO || env.GITHUB_REPOSITORY || gitRemoteRepoSlug(projectRoot) || '').trim();
@@ -278,9 +286,11 @@ async function buildEnvironment(identity, teamId) {
         }
 
         env.DUSTWAVE_RELEASE_REPO = env.DUSTWAVE_RELEASE_REPO || releaseRepository;
-        env.TAURI_SIGNING_PRIVATE_KEY = env.TAURI_SIGNING_PRIVATE_KEY || await readFile(privateKeyPath, 'utf8');
-        env.TAURI_SIGNING_PRIVATE_KEY_PATH = privateKeyPath;
-        env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = await readTrimmedFile(passwordPath);
+        if (!privateKeyFromEnv && !privateKeyPathFromEnv) {
+            env.TAURI_SIGNING_PRIVATE_KEY = await readFile(privateKeyPath, 'utf8');
+            env.TAURI_SIGNING_PRIVATE_KEY_PATH = privateKeyPath;
+        }
+        env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = password;
         env.TAURI_UPDATER_PUBLIC_KEY = env.TAURI_UPDATER_PUBLIC_KEY || publicKey;
         env.DUSTWAVE_TAURI_UPDATER_PUBLIC_KEY = env.DUSTWAVE_TAURI_UPDATER_PUBLIC_KEY || publicKey;
     }
