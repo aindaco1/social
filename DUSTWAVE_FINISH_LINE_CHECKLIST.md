@@ -2,6 +2,8 @@
 
 This is the external and acceptance work remaining after the local Tauri/Rust migration foundation and Pool/Store design-language pass. The app now automates the provider setup packet, account onboarding packet, local Developer ID signing wrapper, updater key generation, LGPL-only FFmpeg/FFprobe sidecar builds, and signed GitHub Actions bundle builds from live local or CI state. Provider portals, OAuth approvals, Apple notarization acceptance, clean-machine installation, and live-provider acceptance still require an operator.
 
+Use `docs/MVP_LAUNCH_PLAN.md` as the launch-control plan. This checklist remains the acceptance inventory; the launch plan gives the operator sequence for P0/P1/P2 work.
+
 ## Design And Brand
 
 - MVP decision: ship with the Gambado typography treatment from Pool/Store. Dust Wave accepts the follow-up responsibility for confirming redistribution rights for the Gambado font files before broader public distribution.
