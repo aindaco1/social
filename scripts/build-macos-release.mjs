@@ -232,6 +232,14 @@ async function buildEnvironment(identity, teamId) {
         env.APPLE_PROVIDER_SHORT_NAME = env.APPLE_PROVIDER_SHORT_NAME || teamId;
     }
 
+    if (!withNotarization) {
+        delete env.APPLE_API_KEY;
+        delete env.APPLE_API_KEY_PATH;
+        delete env.APPLE_API_ISSUER;
+        delete env.APPLE_ID;
+        delete env.APPLE_PASSWORD;
+    }
+
     if (withNotarization) {
         const apiKeyPath = String(process.env.APPLE_API_KEY_PATH || '').trim() || (await firstAppleApiKeyPath());
         const apiKey = String(process.env.APPLE_API_KEY || '').trim() || appleApiKeyIdFromPath(apiKeyPath);
