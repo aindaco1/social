@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the Dust Wave desktop shell.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "notification:default",
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
+    "updater:default"
+  ]
+}

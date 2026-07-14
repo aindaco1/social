@@ -1,0 +1,198 @@
+name: Desktop
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      build_bundle:
+        description: Build and upload unsigned macOS desktop bundles
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      build_media_sidecars:
+        description: Build with staged FFmpeg/FFprobe sidecars
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      build_updater_artifacts:
+        description: Build signed Tauri updater artifacts
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      publish_release:
+        description: Create a draft GitHub release from the bundle artifacts
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      release_tag:
+        description: Release tag to use when publish_release is true, for example v0.1.0
+        required: false
+        type: string
+      release_repository:
+        description: GitHub repository that hosts updater manifests, for example dust-wave/social
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-check:
+    name: Release check
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run desktop release checks
+        run: npm run desktop:release:check
+
+  release-bundle:
+    name: macOS release bundle
+    runs-on: macos-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare Apple API key file
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${APPLE_API_KEY_P8:-}" ]]; then
+            key_dir="$RUNNER_TEMP/apple-auth"
+            key_name="${APPLE_API_KEY:-app-store-connect}"
+            key_path="$key_dir/AuthKey_${key_name}.p8"
+
+            mkdir -p "$key_dir"
+            printf '%s' "$APPLE_API_KEY_P8" > "$key_path"
+            chmod 600 "$key_path"
+            echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build desktop bundle
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DUSTWAVE_RELEASE_REPO: ${{ inputs.release_repository || github.repository }}
+          DUSTWAVE_TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY || secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          args=(--dmg --bundles app)
+
+          if [[ "${{ inputs.build_media_sidecars }}" == "true" && "${{ inputs.build_updater_artifacts }}" == "true" ]]; then
+            args=(--media --updater "${args[@]}")
+          elif [[ "${{ inputs.build_media_sidecars }}" == "true" ]]; then
+            args=(--media "${args[@]}")
+          elif [[ "${{ inputs.build_updater_artifacts }}" == "true" ]]; then
+            args=(--updater "${args[@]}")
+          fi
+
+          node scripts/build-macos-release.mjs "${args[@]}"
+
+      - name: Zip macOS app
+        run: ditto -c -k --keepParent "src-tauri/target/release/bundle/macos/Dust Wave Social.app" "src-tauri/target/release/bundle/macos/Dust Wave Social.app.zip"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-wave-social-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-wave-social-app-zip
+          path: src-tauri/target/release/bundle/macos/*.app.zip
+          if-no-files-found: error
+
+      - name: Upload updater artifacts
+        if: inputs.build_updater_artifacts == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-wave-social-updater-artifacts
+          path: |
+            src-tauri/target/release/bundle/macos/*.tar.gz
+            src-tauri/target/release/bundle/macos/*.tar.gz.sig
+            src-tauri/target/release/bundle/latest.json
+          if-no-files-found: error
+
+      - name: Create draft GitHub release
+        if: inputs.publish_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG:-desktop-${GITHUB_RUN_NUMBER}}"
+          shopt -s nullglob
+          artifacts=(
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app.zip
+            src-tauri/target/release/bundle/macos/*.tar.gz
+            src-tauri/target/release/bundle/macos/*.tar.gz.sig
+            src-tauri/target/release/bundle/latest.json
+          )
+          gh release create "$tag" "${artifacts[@]}" --draft --title "Dust Wave Social $tag"

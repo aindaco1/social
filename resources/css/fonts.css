@@ -1,4 +1,20 @@
 @font-face {
+    font-family: 'gambado-sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../fonts/gambado-sans-regular.otf') format('opentype');
+}
+
+@font-face {
+    font-family: 'gambado-sans';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('../fonts/gambado-sans-forte.otf') format('opentype');
+}
+
+@font-face {
     font-family: 'Inter';
     font-style: normal;
     font-weight: 400;

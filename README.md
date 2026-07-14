@@ -8,6 +8,18 @@
 [![GitHub Tests Action Status](https://img.shields.io/github/workflow/status/inovector/mixpost/run-tests?label=tests)](https://github.com/inovector/mixpost/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/inovector/mixpost.svg?style=flat-square)](https://packagist.org/packages/inovector/mixpost)
 
+## Dust Wave Desktop Notes
+
+This repository also contains the Dust Wave Social Tauri/Rust desktop migration work. Current Dust Wave planning and operating docs:
+
+- [Migration plan](DUSTWAVE_MIGRATION.md)
+- [Mixpost parity audit](MIXPOST_PARITY_AUDIT.md)
+- [Finish-line checklist](DUSTWAVE_FINISH_LINE_CHECKLIST.md)
+- [Release checklist](RELEASE.md)
+- [Product and ethical best practices](docs/BEST_PRACTICES.md)
+- [Support runbook](docs/SUPPORT_RUNBOOK.md)
+- [Security policy](SECURITY.md)
+
 ## Introduction
 
 Mixpost is a robust and versatile **social media management platform**, designed to streamline **social media operations** and enhance **content marketing strategies**. Our platform empowers brands and businesses to effectively manage their **online presence**, leading them to success in the dynamic digital landscape. Mixpost's mission is to offer a comprehensive and powerful solution, enabling users to elevate their **social media management** and achieve tangible results.
