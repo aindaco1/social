@@ -40,7 +40,7 @@ try {
     assert.equal(manifest.platforms['darwin-aarch64'].signature, 'signed-base64');
     assert.equal(
         manifest.platforms['darwin-aarch64'].url,
-        'https://github.com/aindaco1/social/releases/download/v0.1.0/Dust%20Wave%20Social.app.tar.gz',
+        'https://github.com/aindaco1/social/releases/download/v0.1.0/Dust.Wave.Social.app.tar.gz',
     );
     assert.equal(Number.isNaN(Date.parse(manifest.pub_date)), false);
     console.log('Tauri updater manifest tests passed.');

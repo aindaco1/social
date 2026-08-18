@@ -84,7 +84,7 @@ function artifactSummary(label, filePath, options = {}) {
     return `- ${label}: \`${relative(filePath)}\` (${formatBytes(statSync(filePath).size)}${checksum})`;
 }
 
-function releaseSourceState() {
+function releaseSourceState(version) {
     const explicit = String(process.env.DUSTWAVE_RELEASE_COMMIT || process.env.DUSTWAVE_RELEASE_TAG || '').trim();
 
     if (explicit) {
@@ -93,8 +93,15 @@ function releaseSourceState() {
 
     const dirty = run('git', ['status', '--porcelain']);
 
-    return dirty.status === 0 && String(dirty.stdout || '').trim()
-        ? 'pending final commit/tag; generated from local worktree with uncommitted changes'
+    if (dirty.status === 0 && String(dirty.stdout || '').trim()) {
+        return 'generated from local worktree with uncommitted changes';
+    }
+
+    const releaseTag = `v${version}`;
+    const tag = run('git', ['rev-parse', '--verify', `refs/tags/${releaseTag}^{commit}`]);
+
+    return tag.status === 0
+        ? `release tag ${releaseTag} exists; the checkout may include post-release changes`
         : 'pending final release tag';
 }
 
@@ -170,7 +177,7 @@ function renderNotes() {
     const productName = tauri.productName || 'Dust Wave Social';
     const version = tauri.version || '0.1.0';
     const repo = String(process.env.DUSTWAVE_RELEASE_REPO || process.env.GITHUB_REPOSITORY || gitRemoteRepoSlug(projectRoot) || '').trim() || 'aindaco1/social';
-    const sourceState = releaseSourceState();
+    const sourceState = releaseSourceState(version);
     const submissionId = currentNotarizationId();
     const dmgPath = releaseDmgPath(productName, version);
     const generatedAt = existsSync(dmgPath)
@@ -183,7 +190,7 @@ function renderNotes() {
     const completeArtifactSet = [dmgPath, latestJsonPath, updaterArchivePath, updaterSignaturePath]
         .every((filePath) => existsSync(filePath));
     const releaseState = completeArtifactSet
-        ? 'complete local Apple Silicon artifact set present; verify signing, notarization, stapling, and smoke launch before publication.'
+        ? 'complete local Apple Silicon artifact set present; verify it independently before using it for any later publication.'
         : 'no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.';
     const readiness = readinessLines();
     const blockedItems = readiness.blocked
@@ -194,7 +201,7 @@ function renderNotes() {
         .join('\n');
 
     return `${sectionStart}
-## Current Release Candidate
+## Current Local Release Artifacts
 
 Generated: ${generatedAt}
 

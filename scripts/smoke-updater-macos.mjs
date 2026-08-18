@@ -34,7 +34,7 @@ if (process.platform !== 'darwin') {
     process.exit(0);
 }
 
-const appPath = path.resolve(
+const sourceAppPath = path.resolve(
     projectRoot,
     argValue('--app') || 'src-tauri/target/release/bundle/macos/Dust Wave Social.app',
 );
@@ -42,41 +42,58 @@ const mode = argValue('--mode') || 'download';
 const expectedVersion = argValue('--expected-version')
     || JSON.parse(await readFile(path.join(projectRoot, 'src-tauri', 'tauri.conf.json'), 'utf8')).version;
 const timeoutMs = Math.max(30_000, Number(argValue('--timeout-ms')) || 180_000);
-const plistPath = path.join(appPath, 'Contents', 'Info.plist');
+const sourcePlistPath = path.join(sourceAppPath, 'Contents', 'Info.plist');
 
-if (!existsSync(plistPath)) {
-    throw new Error(`Packaged app not found: ${appPath}`);
+if (!existsSync(sourcePlistPath)) {
+    throw new Error(`Packaged app not found: ${sourceAppPath}`);
 }
 
-const executablePath = path.join(appPath, 'Contents', 'MacOS', plistValue(plistPath, 'CFBundleExecutable'));
-
-if (!existsSync(executablePath)) {
-    throw new Error(`Packaged app executable not found: ${executablePath}`);
-}
-
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'dust-wave-updater-smoke-'));
+// GitHub's macOS runner can place the Cargo target directory behind a symlink.
+// Tauri's updater deliberately rejects a starting executable with symlinked path
+// components, so exercise the signed bundle from a canonical staging directory.
+const tempBase = existsSync('/private/tmp') ? '/private/tmp' : os.tmpdir();
+const tempRoot = await mkdtemp(path.join(tempBase, 'dust-wave-updater-smoke-'));
+const appPath = path.join(tempRoot, path.basename(sourceAppPath));
 const reportPath = path.join(tempRoot, 'report.json');
-const child = spawn(executablePath, [], {
-    cwd: projectRoot,
-    env: {
-        ...process.env,
-        DUSTWAVE_SMOKE_REPORT: reportPath,
-        DUSTWAVE_UPDATER_EXPECT_VERSION: expectedVersion,
-        DUSTWAVE_UPDATER_SMOKE: mode,
-        ...(mode === 'download' ? { DUSTWAVE_UPDATER_SMOKE_FORCE_UPDATE: '1' } : {}),
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-});
-let output = '';
-
-child.stdout.on('data', (chunk) => {
-    output += chunk;
-});
-child.stderr.on('data', (chunk) => {
-    output += chunk;
-});
+let child;
 
 try {
+    const staged = spawnSync('/usr/bin/ditto', [sourceAppPath, appPath], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+    });
+
+    if (staged.status !== 0) {
+        throw new Error(staged.stderr || `Unable to stage packaged app at ${appPath}`);
+    }
+
+    const plistPath = path.join(appPath, 'Contents', 'Info.plist');
+    const executablePath = path.join(appPath, 'Contents', 'MacOS', plistValue(plistPath, 'CFBundleExecutable'));
+
+    if (!existsSync(executablePath)) {
+        throw new Error(`Packaged app executable not found: ${executablePath}`);
+    }
+
+    child = spawn(executablePath, [], {
+        cwd: tempRoot,
+        env: {
+            ...process.env,
+            DUSTWAVE_SMOKE_REPORT: reportPath,
+            DUSTWAVE_UPDATER_EXPECT_VERSION: expectedVersion,
+            DUSTWAVE_UPDATER_SMOKE: mode,
+            ...(mode === 'download' ? { DUSTWAVE_UPDATER_SMOKE_FORCE_UPDATE: '1' } : {}),
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+
+    child.stdout.on('data', (chunk) => {
+        output += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+        output += chunk;
+    });
+
     const exitCode = await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             child.kill();
@@ -108,7 +125,7 @@ try {
 
     console.log(`Updater ${mode} smoke passed for ${report.package_version} -> ${report.update_version} (${report.downloaded_bytes} bytes).`);
 } finally {
-    if (!child.killed && child.exitCode === null) {
+    if (child && !child.killed && child.exitCode === null) {
         child.kill();
     }
     await rm(tempRoot, { recursive: true, force: true });

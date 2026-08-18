@@ -252,6 +252,7 @@ jobs:
           else
             gh release create "$tag" "${artifacts[@]}" --verify-tag --generate-notes --title "Dust Wave Social $tag"
           fi
+          touch "$RUNNER_TEMP/dust-wave-release-published"
 
       - name: Verify published updater asset
         if: github.ref_type == 'tag' || inputs.publish_release == 'true'
@@ -265,6 +266,10 @@ jobs:
           gh release download "$RELEASE_TAG" --pattern latest.json --dir "$published_dir" --clobber
           cmp src-tauri/target/release/bundle/latest.json "$published_dir/latest.json"
           gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,url,assets
+          updater_url="$(jq -r '.platforms["darwin-aarch64"].url' "$published_dir/latest.json")"
+          curl --fail --silent --show-error --location --head \
+            --retry 4 --retry-all-errors --retry-delay 5 \
+            "$updater_url" >/dev/null
 
       - name: Smoke published updater
         if: github.ref_type == 'tag' || inputs.publish_release == 'true'
@@ -289,7 +294,18 @@ jobs:
 
           previous_dir="$RUNNER_TEMP/dust-wave-previous-release"
           mkdir -p "$previous_dir"
-          gh release download "$previous_tag" --pattern 'Dust Wave Social.app.tar.gz' --dir "$previous_dir" --clobber
-          tar -xzf "$previous_dir/Dust Wave Social.app.tar.gz" -C "$previous_dir"
+          gh release download "$previous_tag" --pattern 'Dust.Wave.Social.app.tar.gz' --dir "$previous_dir" --clobber
+          tar -xzf "$previous_dir/Dust.Wave.Social.app.tar.gz" -C "$previous_dir"
           npm run desktop:smoke:updater -- --mode install --app "$previous_dir/Dust Wave Social.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$previous_dir/Dust Wave Social.app/Contents/Info.plist")" = "${RELEASE_TAG#v}"
+
+      - name: Withdraw failed published release
+        if: ${{ failure() && (github.ref_type == 'tag' || inputs.publish_release == 'true') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ -f "$RUNNER_TEMP/dust-wave-release-published" ]] && gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --draft=true
+          fi

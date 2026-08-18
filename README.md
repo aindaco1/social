@@ -6,7 +6,9 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-The desktop implementation and supporting infrastructure are substantially complete. Public release is still gated on production provider credentials, real-account acceptance, packaged local-AI review, a clean-Mac install, an updater test, and final release approval.
+Version 0.1.0 is published for Apple Silicon macOS as a signed, notarized, and stapled DMG. Its public updater manifest, archive, and signature have passed a real packaged-app download check.
+
+That completes the production packaging and update-delivery gate, not the broader operational launch. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence. A true previous-version-to-new-version install hop will first be possible with 0.1.1 or later.
 
 Run the current readiness audit instead of copying status counts into another document:
 

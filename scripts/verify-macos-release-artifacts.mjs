@@ -355,7 +355,8 @@ if (requireUpdater || hasUpdaterArtifacts) {
             }
 
             if (updaterUrl) {
-                const expectedPath = `/aindaco1/social/releases/download/v${expectedVersion}/${encodeURIComponent(path.basename(updaterArtifactPath))}`;
+                const releaseAssetName = path.basename(updaterArtifactPath).replace(/\s+/g, '.');
+                const expectedPath = `/aindaco1/social/releases/download/v${expectedVersion}/${encodeURIComponent(releaseAssetName)}`;
 
                 if (updaterUrl.protocol !== 'https:' || updaterUrl.hostname !== 'github.com' || updaterUrl.pathname !== expectedPath) {
                     fail(`latest.json updater URL does not match the v${expectedVersion} GitHub release asset: ${platform.url}`);

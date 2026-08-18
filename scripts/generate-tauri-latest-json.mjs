@@ -24,6 +24,10 @@ function fail(message) {
     process.exit(1);
 }
 
+function githubReleaseAssetName(name) {
+    return String(name || '').replace(/\s+/g, '.');
+}
+
 function hostPlatformKey() {
     const arch = process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch;
 
@@ -86,6 +90,7 @@ if (!signature) {
 }
 
 const artifactName = path.basename(artifactPath);
+const releaseAssetName = githubReleaseAssetName(artifactName);
 const manifest = {
     version,
     notes,
@@ -93,7 +98,7 @@ const manifest = {
     platforms: {
         [platform]: {
             signature,
-            url: `https://github.com/${releaseRepository}/releases/download/${encodeURIComponent(releaseTag)}/${encodeURIComponent(artifactName)}`,
+            url: `https://github.com/${releaseRepository}/releases/download/${encodeURIComponent(releaseTag)}/${encodeURIComponent(releaseAssetName)}`,
         },
     },
 };

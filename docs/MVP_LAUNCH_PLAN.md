@@ -27,28 +27,39 @@ npm run mvp:launch:readiness
 
 Implementation/infrastructure readiness is not the same as live-provider or launch acceptance. Manual items remain open until an operator records evidence from the real provider, account, artifact, or target Mac.
 
-## Historical release evidence
+## Published release evidence
 
-Apple accepted submission `b09b2947-4116-4eec-8c0a-0fea6946ddda`, and the project recorded it as stapled for an earlier local `0.1.0` candidate. That record does not prove that the same artifacts are still present or that a rebuilt candidate has the same notarization state. The generated section below is authoritative for the files currently available in the checkout.
+[Dust Wave Social v0.1.0](https://github.com/aindaco1/social/releases/tag/v0.1.0) was published on 2026-08-18 from commit `00344046d9b4eecc6100eec9163531f91e31efd5` for Apple Silicon macOS.
+
+- Apple accepted app submission `5ff76222-b5de-4150-b30c-cf77d2e9994f`.
+- Apple accepted submission `e3ccda23-9df6-4a80-a517-a8e5bc47c09a` for the DMG; stapler validation and Gatekeeper assessment passed.
+- Published DMG SHA-256: `ac5cb83fdf1b36a4b743ea141d8818c88670ac97fd71ee9414e188f4c13d2169`.
+- Published updater archive SHA-256: `01a3d89eb63563077a237a4ac2388e09ce0152b625a8a878a93a8f2367e65f0d`.
+- Published `latest.json` SHA-256: `58ec53879cf9b057064127d100a0be91d71987a9257422af7420df9f07399793`.
+- A packaged production app resolved the public manifest and downloaded and verified all 45,568,869 updater bytes.
+
+The initial tag workflow exposed a GitHub asset-name normalization mismatch and a symlinked CI launch path in the final smoke. The release was immediately returned to draft, the manifest and harness were corrected, and the same notarized artifacts were republished only after the live updater download passed. Because 0.1.0 is the first release, a real previous-version installation hop remains open until 0.1.1 or later.
+
+The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
 <!-- MVP_RELEASE_NOTES_START -->
-## Current Release Candidate
+## Current Local Release Artifacts
 
 Generated: 2026-08-18T18:59:33.350Z
 
 Repository: `aindaco1/social`
-Source state: pending final commit/tag; generated from local worktree with uncommitted changes
-Release state: complete local Apple Silicon artifact set present; verify signing, notarization, stapling, and smoke launch before publication.
+Source state: generated from local worktree with uncommitted changes
+Release state: complete local Apple Silicon artifact set present; verify it independently before using it for any later publication.
 
 ## Artifacts
 
 - Apple Silicon DMG: `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.0_aarch64.dmg` (45 MB, SHA-256 `87b737941272423a942d9237997c0574f23ee09ef80c63f6a9713af9a9e24633`)
-- Recorded notarization submission (verify it matches this DMG): `b09b2947-4116-4eec-8c0a-0fea6946ddda`
-- Tauri updater latest.json: `src-tauri/target/release/bundle/latest.json` (702 B)
+- Recorded notarization submission (verify it matches this DMG): `e3ccda23-9df6-4a80-a517-a8e5bc47c09a`
+- Tauri updater latest.json: `src-tauri/target/release/bundle/latest.json` (698 B)
 - Tauri updater archive: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz` (44 MB, SHA-256 `2cbcdd571e12f4022650e2acf97e52eff78f0e6e2d9ad10a35119dbf9870bfb8`)
 - Tauri updater signature: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig` (416 B)
 - Updater version: `0.1.0`
-- Updater URL: `https://github.com/aindaco1/social/releases/latest/download/Dust%20Wave%20Social.app.tar.gz`
+- Updater URL: `https://github.com/aindaco1/social/releases/download/v0.1.0/Dust.Wave.Social.app.tar.gz`
 - Updater signature embedded in latest.json: yes
 
 ## Readiness Snapshot
@@ -104,16 +115,15 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Produce or recover a complete signed release candidate and regenerate the section above.
-2. Install the stapled DMG on a clean Apple Silicon Mac.
+1. Preserve the published 0.1.0 DMG and updater assets as the rollback baseline.
+2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Publish and install a signed higher-version updater test.
-9. Complete visual, product-risk, security, ownership, and go/no-go review.
-10. Tag and publish only the accepted candidate while retaining rollback artifacts.
+8. Publish and install a signed higher-version updater test with 0.1.1 or later.
+9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
 
@@ -271,23 +281,23 @@ Use [SUPPORT_RUNBOOK.md](SUPPORT_RUNBOOK.md) for failure and incident procedures
 
 ## 8. Updater acceptance
 
-A real updater test requires a visible release with a version higher than the installed candidate:
+The 0.1.0 release passed public manifest resolution, signed archive download, and signature verification from the packaged app. Because it is the first published version, it cannot prove a previous-version-to-new-version installation hop.
 
-1. Commit and tag the accepted source.
-2. Bump to a test version such as `0.1.1`.
-3. Build, sign, notarize, and staple the new artifacts with the same updater private key.
-4. Upload `latest.json`, `.app.tar.gz`, `.app.tar.gz.sig`, and the DMG to a GitHub Release.
-5. From installed `0.1.0`, check for updates in System.
-6. Download, install, and relaunch.
-7. Confirm the version changed and app data survived.
+For 0.1.1 or later:
+
+1. Build, sign, notarize, staple, and publish the higher version with the same updater private key.
+2. Let the tag workflow download the previous public app archive and perform the updater install.
+3. From an independently installed 0.1.0 app, check for updates in System.
+4. Download, install, and relaunch.
+5. Confirm the version changed and app data survived.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.
 
 ## 9. Final go/no-go
 
-Before publication, confirm:
+Before treating 0.1.0 as operationally launch-ready, or publishing a later release, confirm:
 
-- The generated release-candidate section names a complete, current artifact set.
+- The generated local-artifact section names a complete, current artifact set when building a later release.
 - Strict artifact verification and packaged smoke launch pass.
 - Clean-Mac install and relaunch pass.
 - Required services and accounts are configured, connected, refreshed, and imported.

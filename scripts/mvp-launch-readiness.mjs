@@ -182,7 +182,7 @@ function releaseNotesAndRollbackReady() {
     const submissionId = currentNotarizationId();
 
     return /Rollback Plan/.test(scriptSource)
-        && /## Current Release Candidate/.test(notesSource)
+        && /## Current Local Release Artifacts/.test(notesSource)
         && /## Rollback Plan/.test(notesSource)
         && /MVP readiness:\s+\d+\s+ready,\s+\d+\s+blocked,\s+\d+\s+manual/.test(notesSource)
         && /Updater URL:/.test(notesSource)
