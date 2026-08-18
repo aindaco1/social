@@ -21,5 +21,10 @@ src-tauri/target
 src-tauri/binaries/ffmpeg-*
 src-tauri/binaries/ffprobe-*
 src-tauri/binaries/SIDECARS.local.json
+workers/**/.dev.vars
+workers/**/.wrangler
+workers/**/.wrangler/
+workers/tiktok-broker/wrangler.generated.jsonc
+workers/media-staging/wrangler.generated.jsonc
 .DS_Store
 CLAUDE.md
