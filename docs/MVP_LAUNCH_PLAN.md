@@ -48,7 +48,7 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: 2026-08-18T18:59:33.350Z
 
 Repository: `aindaco1/social`
-Source state: generated from local worktree with uncommitted changes
+Source state: release tag v0.1.0 exists; the checkout may include post-release changes
 Release state: complete local Apple Silicon artifact set present; verify it independently before using it for any later publication.
 
 ## Artifacts
