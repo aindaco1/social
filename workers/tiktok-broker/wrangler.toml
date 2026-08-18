@@ -1,0 +1,15 @@
+name = "dustwave-tiktok-broker"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+workers_dev = true
+
+[vars]
+TIKTOK_SCOPES = "user.info.basic,user.info.stats,video.list"
+# Set this when you use a custom domain. The OAuth callback will be:
+# https://your-domain.example/api/tiktok/oauth/callback
+# PUBLIC_BROKER_BASE_URL = "https://your-domain.example"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dustwave-tiktok-broker"
+database_id = "replace-with-d1-database-id"

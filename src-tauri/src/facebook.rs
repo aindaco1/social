@@ -1,6 +1,7 @@
 use crate::domain::{
     AccountForm, FacebookOAuthExchangeForm, FacebookOAuthStartForm, FacebookOAuthStartSummary,
-    FacebookPageCandidate, FacebookPageConnectForm,
+    FacebookPageCandidate, FacebookPageConnectForm, InstagramAccountCandidate,
+    InstagramAccountConnectForm,
 };
 use crate::secrets::{
     SecretError, resolve_account_secret, resolve_service_credential, save_account_secret,
@@ -39,10 +40,16 @@ pub struct FacebookUserConnection {
     pub user_id: String,
     pub user_name: String,
     pub pages: Vec<FacebookPageCandidate>,
+    pub instagram_accounts: Vec<InstagramAccountCandidate>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FacebookPageAuthorization {
+    pub accounts: Vec<AccountForm>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstagramAccountAuthorization {
     pub accounts: Vec<AccountForm>,
 }
 
@@ -58,6 +65,22 @@ pub struct FacebookPagePublishRequest {
 #[derive(Debug, Clone)]
 pub struct FacebookPagePublishResponse {
     pub id: String,
+    pub raw: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstagramPublishRequest {
+    pub instagram_id: String,
+    pub access_token: String,
+    pub text: String,
+    pub media_urls: Vec<String>,
+    pub api_version: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstagramPublishResponse {
+    pub id: String,
+    pub container_ids: Vec<String>,
     pub raw: Value,
 }
 
@@ -218,7 +241,9 @@ pub fn exchange_facebook_oauth(
     let user = fetch_facebook_user(&client, &long_token, &api_version)?;
     let user_id = required_string(&user, "id", "Facebook response missing user id")?;
     let user_name = required_string(&user, "name", "Facebook response missing user name")?;
-    let pages = fetch_facebook_pages(&client, &long_token, false, &api_version)?;
+    let pages = fetch_facebook_pages(&client, &long_token, true, &api_version)?;
+    let instagram_accounts =
+        instagram_account_candidates_from_pages(&client, &pages, &api_version)?;
 
     save_account_secret("facebook_user", &user_id, "access_token", &long_token)?;
 
@@ -226,6 +251,7 @@ pub fn exchange_facebook_oauth(
         user_id,
         user_name,
         pages,
+        instagram_accounts,
     })
 }
 
@@ -293,6 +319,76 @@ pub fn connect_facebook_pages(
     }
 
     Ok(FacebookPageAuthorization { accounts })
+}
+
+pub fn connect_instagram_accounts(
+    form: &InstagramAccountConnectForm,
+) -> Result<InstagramAccountAuthorization, FacebookError> {
+    let user_id = form.user_id.trim();
+    let instagram_ids = form
+        .instagram_ids
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    if user_id.is_empty() {
+        return Err(FacebookError::Validation(
+            "Facebook user id is required".to_string(),
+        ));
+    }
+
+    if instagram_ids.is_empty() {
+        return Err(FacebookError::Validation(
+            "Select at least one Instagram account".to_string(),
+        ));
+    }
+
+    let user_token = resolve_account_secret("facebook_user", user_id, "access_token")?;
+    let client = facebook_client()?;
+    let api_version = normalized_facebook_api_version(form.api_version.as_deref())?;
+    let pages = fetch_facebook_pages(&client, &user_token, true, &api_version)?;
+    let instagram_accounts =
+        instagram_account_candidates_from_pages(&client, &pages, &api_version)?;
+    let mut accounts = Vec::new();
+
+    for instagram_id in instagram_ids {
+        let candidate = instagram_accounts
+            .iter()
+            .find(|candidate| candidate.id == instagram_id)
+            .ok_or_else(|| {
+                FacebookError::Validation(format!(
+                    "Instagram account {instagram_id} was not returned"
+                ))
+            })?;
+        let access_token = candidate.access_token.as_deref().ok_or_else(|| {
+            FacebookError::Validation(format!(
+                "Instagram account {instagram_id} missing Page access token"
+            ))
+        })?;
+        let secret_ref =
+            save_account_secret("instagram", &candidate.id, "access_token", access_token)?;
+
+        accounts.push(AccountForm {
+            name: candidate.name.clone(),
+            username: candidate.username.clone(),
+            provider: "instagram".to_string(),
+            provider_id: candidate.id.clone(),
+            authorized: true,
+            avatar_path: candidate.avatar_path.clone(),
+            access_token_secret_ref: secret_ref,
+            data: Some(json!({
+                "auth": "facebook_user",
+                "user_id": user_id,
+                "page_id": candidate.page_id,
+                "page_name": candidate.page_name,
+                "api_version": api_version,
+            })),
+        });
+    }
+
+    Ok(InstagramAccountAuthorization { accounts })
 }
 
 pub fn publish_facebook_page_post(
@@ -627,6 +723,163 @@ pub fn fetch_facebook_page_insights(
         .unwrap_or_default())
 }
 
+pub fn verify_instagram_account(
+    instagram_id: &str,
+    access_token: &str,
+    access_token_secret_ref: String,
+    existing_data_json: Option<&str>,
+    api_version: Option<&str>,
+) -> Result<AccountForm, FacebookError> {
+    let api_version = normalized_facebook_api_version(api_version)?;
+    let account = fetch_instagram_account(instagram_id, access_token, &api_version)?;
+
+    instagram_account_form(
+        &account,
+        access_token_secret_ref,
+        existing_data_json,
+        &api_version,
+    )
+}
+
+pub fn fetch_instagram_account_audience(
+    instagram_id: &str,
+    access_token: &str,
+    api_version: Option<&str>,
+) -> Result<Value, FacebookError> {
+    let api_version = normalized_facebook_api_version(api_version)?;
+
+    fetch_instagram_account(instagram_id, access_token, &api_version)
+}
+
+pub fn fetch_instagram_media(
+    instagram_id: &str,
+    access_token: &str,
+    api_version: Option<&str>,
+) -> Result<Vec<Value>, FacebookError> {
+    let instagram_id = instagram_id.trim();
+    let access_token = access_token.trim();
+
+    if instagram_id.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram account id is required".to_string(),
+        ));
+    }
+
+    if access_token.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram access token is required".to_string(),
+        ));
+    }
+
+    let api_version = normalized_facebook_api_version(api_version)?;
+    let client = facebook_client()?;
+    let endpoint = format!("https://graph.facebook.com/{api_version}/{instagram_id}/media");
+    let response = client
+        .get(endpoint)
+        .query(&[
+            (
+                "fields",
+                "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
+            ),
+            ("limit", "100"),
+            ("access_token", access_token),
+        ])
+        .send()?;
+    let status = response.status();
+    let text = response.text()?;
+    let value: Value = serde_json::from_str(&text)?;
+
+    if !status.is_success() {
+        return Err(facebook_http_error(
+            status,
+            &value,
+            "Instagram media lookup failed",
+        ));
+    }
+
+    Ok(value
+        .get("data")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+pub fn publish_instagram_post(
+    request: &InstagramPublishRequest,
+) -> Result<InstagramPublishResponse, FacebookError> {
+    let instagram_id = request.instagram_id.trim();
+    let access_token = request.access_token.trim();
+    let text = request.text.trim();
+    let media_urls = request
+        .media_urls
+        .iter()
+        .map(|url| url.trim())
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    if instagram_id.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram account id is required".to_string(),
+        ));
+    }
+
+    if access_token.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram access token is required".to_string(),
+        ));
+    }
+
+    if media_urls.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram publishing requires at least one HTTPS media URL".to_string(),
+        ));
+    }
+
+    if media_urls.len() > 1 {
+        return Err(FacebookError::Validation(
+            "Instagram carousel publishing is not enabled in the MVP desktop path yet".to_string(),
+        ));
+    }
+
+    let media_url = &media_urls[0];
+
+    if !media_url.starts_with("https://") {
+        return Err(FacebookError::Validation(
+            "Instagram publishing requires a public HTTPS media URL; local desktop files need a staging/upload path before publishing"
+                .to_string(),
+        ));
+    }
+
+    let api_version = normalized_facebook_api_version(request.api_version.as_deref())?;
+    let client = facebook_client()?;
+    let container = create_instagram_media_container(
+        &client,
+        instagram_id,
+        access_token,
+        media_url,
+        text,
+        &api_version,
+    )?;
+    let response = publish_instagram_media_container(
+        &client,
+        instagram_id,
+        access_token,
+        &container,
+        &api_version,
+    )?;
+
+    Ok(InstagramPublishResponse {
+        id: response
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| container.clone()),
+        container_ids: vec![container],
+        raw: response,
+    })
+}
+
 fn facebook_authorization_summary(
     client_id: &str,
     form: &FacebookOAuthStartForm,
@@ -830,6 +1083,125 @@ fn fetch_facebook_pages(
     facebook_page_candidates(&value)
 }
 
+fn instagram_account_candidates_from_pages(
+    client: &Client,
+    pages: &[FacebookPageCandidate],
+    api_version: &str,
+) -> Result<Vec<InstagramAccountCandidate>, FacebookError> {
+    let mut accounts = Vec::new();
+
+    for page in pages {
+        let Some(access_token) = page.access_token.as_deref() else {
+            continue;
+        };
+        let Some(account) =
+            fetch_instagram_account_for_page(client, page, access_token, api_version)?
+        else {
+            continue;
+        };
+
+        accounts.push(account);
+    }
+
+    Ok(accounts)
+}
+
+fn fetch_instagram_account_for_page(
+    client: &Client,
+    page: &FacebookPageCandidate,
+    page_access_token: &str,
+    api_version: &str,
+) -> Result<Option<InstagramAccountCandidate>, FacebookError> {
+    let endpoint = format!("https://graph.facebook.com/{api_version}/{}", page.id);
+    let response = client
+        .get(endpoint)
+        .query(&[
+            (
+                "fields",
+                "instagram_business_account{id,username,name,profile_picture_url,followers_count,media_count}",
+            ),
+            ("access_token", page_access_token),
+        ])
+        .send()?;
+    let status = response.status();
+    let text = response.text()?;
+    let value: Value = serde_json::from_str(&text)?;
+
+    if !status.is_success() {
+        return Err(facebook_http_error(
+            status,
+            &value,
+            "Instagram account lookup failed",
+        ));
+    }
+
+    let Some(account) = value.get("instagram_business_account") else {
+        return Ok(None);
+    };
+    let id = required_string(account, "id", "Instagram account missing id")?;
+    let username = optional_string(account, "username");
+    let name = optional_string(account, "name")
+        .or_else(|| username.clone())
+        .unwrap_or_else(|| format!("Instagram {id}"));
+
+    Ok(Some(InstagramAccountCandidate {
+        id,
+        name,
+        username,
+        avatar_path: optional_string(account, "profile_picture_url"),
+        page_id: page.id.clone(),
+        page_name: page.name.clone(),
+        access_token: Some(page_access_token.to_string()),
+    }))
+}
+
+fn fetch_instagram_account(
+    instagram_id: &str,
+    access_token: &str,
+    api_version: &str,
+) -> Result<Value, FacebookError> {
+    let instagram_id = instagram_id.trim();
+    let access_token = access_token.trim();
+
+    if instagram_id.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram account id is required".to_string(),
+        ));
+    }
+
+    if access_token.is_empty() {
+        return Err(FacebookError::Validation(
+            "Instagram access token is required".to_string(),
+        ));
+    }
+
+    let client = facebook_client()?;
+    let endpoint = format!("https://graph.facebook.com/{api_version}/{instagram_id}");
+    let response = client
+        .get(endpoint)
+        .query(&[
+            (
+                "fields",
+                "id,username,name,profile_picture_url,followers_count,follows_count,media_count",
+            ),
+            ("access_token", access_token),
+        ])
+        .send()?;
+    let status = response.status();
+    let text = response.text()?;
+    let value: Value = serde_json::from_str(&text)?;
+
+    if !status.is_success() {
+        return Err(facebook_http_error(
+            status,
+            &value,
+            "Instagram account lookup failed",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn facebook_page_candidates(value: &Value) -> Result<Vec<FacebookPageCandidate>, FacebookError> {
     let data = value
         .get("data")
@@ -896,10 +1268,110 @@ fn facebook_page_account_form(
     })
 }
 
+fn instagram_account_form(
+    account: &Value,
+    access_token_secret_ref: String,
+    existing_data_json: Option<&str>,
+    api_version: &str,
+) -> Result<AccountForm, FacebookError> {
+    let provider_id = required_string(account, "id", "Instagram account missing id")?;
+    let mut metadata = existing_data_json
+        .and_then(|value| serde_json::from_str::<Value>(value).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+
+    metadata.insert(
+        "auth".to_string(),
+        Value::String("facebook_user".to_string()),
+    );
+    metadata.insert(
+        "api_version".to_string(),
+        Value::String(api_version.to_string()),
+    );
+
+    let username = optional_string(account, "username");
+    let name = optional_string(account, "name")
+        .or_else(|| username.clone())
+        .unwrap_or_else(|| format!("Instagram {provider_id}"));
+
+    Ok(AccountForm {
+        name,
+        username,
+        provider: "instagram".to_string(),
+        provider_id,
+        authorized: true,
+        avatar_path: optional_string(account, "profile_picture_url"),
+        access_token_secret_ref,
+        data: Some(Value::Object(metadata)),
+    })
+}
+
 fn facebook_publish_response(value: Value) -> Result<FacebookPagePublishResponse, FacebookError> {
     let id = required_string(&value, "id", "Facebook response missing post id")?;
 
     Ok(FacebookPagePublishResponse { id, raw: value })
+}
+
+fn create_instagram_media_container(
+    client: &Client,
+    instagram_id: &str,
+    access_token: &str,
+    media_url: &str,
+    caption: &str,
+    api_version: &str,
+) -> Result<String, FacebookError> {
+    let endpoint = format!("https://graph.facebook.com/{api_version}/{instagram_id}/media");
+    let response = client
+        .post(endpoint)
+        .form(&[
+            ("image_url", media_url),
+            ("caption", caption),
+            ("access_token", access_token),
+        ])
+        .send()?;
+    let status = response.status();
+    let text = response.text()?;
+    let value: Value = serde_json::from_str(&text)?;
+
+    if !status.is_success() {
+        return Err(facebook_http_error(
+            status,
+            &value,
+            "Instagram media container creation failed",
+        ));
+    }
+
+    required_string(&value, "id", "Instagram response missing container id")
+}
+
+fn publish_instagram_media_container(
+    client: &Client,
+    instagram_id: &str,
+    access_token: &str,
+    container_id: &str,
+    api_version: &str,
+) -> Result<Value, FacebookError> {
+    let endpoint = format!("https://graph.facebook.com/{api_version}/{instagram_id}/media_publish");
+    let response = client
+        .post(endpoint)
+        .form(&[
+            ("creation_id", container_id),
+            ("access_token", access_token),
+        ])
+        .send()?;
+    let status = response.status();
+    let text = response.text()?;
+    let value: Value = serde_json::from_str(&text)?;
+
+    if !status.is_success() {
+        return Err(facebook_http_error(
+            status,
+            &value,
+            "Instagram media publish failed",
+        ));
+    }
+
+    Ok(value)
 }
 
 fn facebook_photo_upload_response(

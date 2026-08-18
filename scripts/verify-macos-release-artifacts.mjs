@@ -127,8 +127,22 @@ function checkCodeSignature(label, filePath) {
     ok(`${label} code signature`, 'valid on disk');
 }
 
+function gatekeeperDmgArgs(filePath) {
+    return ['-a', '-vv', '-t', 'open', '--context', 'context:primary-signature', filePath];
+}
+
 if (process.platform !== 'darwin') {
     fail('macOS release artifact verification must run on macOS.');
+}
+
+const localAiModelCheck = run(process.execPath, [path.join(scriptDirectory, 'verify-local-ai-models.mjs')], {
+    allowFailure: true,
+});
+
+if (localAiModelCheck.status === 0) {
+    ok('local AI model bundle', localAiModelCheck.output);
+} else {
+    fail(`local AI model bundle validation failed:\n${localAiModelCheck.output}`);
 }
 
 if (requirePath('macOS app bundle', appPath)) {
@@ -203,7 +217,7 @@ if (requirePath('release DMG', dmgPath)) {
     }
 
     if (requireStapled) {
-        run('spctl', ['-a', '-vv', dmgPath]);
+        run('spctl', gatekeeperDmgArgs(dmgPath));
         ok('Gatekeeper assessment', 'accepted');
     }
 }

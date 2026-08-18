@@ -2,16 +2,19 @@ use crate::domain::{
     AccountForm, AccountImportQueueBatchSummary, AccountSummary, AppSettings, AudienceForm,
     AudiencePoint, AudienceReport, BulkDeletePostsForm, BulkDeletePostsSummary,
     DashboardAccountCounts, DashboardJobCounts, DashboardPostCounts, DashboardProviderSummary,
-    DashboardSummary, ExternalMediaItem, FacebookImportSummary, FacebookInsightForm, JobForm,
-    JobSummary, LocalBackupExportSummary, LocalBackupRestoreForm, LocalBackupRestoreSummary,
-    LocalDataSnapshot, MastodonImportSummary, MediaCleanupSummary, MediaDownloadForm,
-    MediaImportForm, MediaLibraryItem, MediaLibraryRequest, MediaSummary, MetricForm,
-    PostCalendarWindow, PostContentBlock, PostDetail, PostForm, PostListAccount, PostListTag,
-    PostQueryRequest, PostQueryResult, PostSummary, PostValidationError, PostValidationReport,
-    PostVersionForm, ProviderCapability, RateLimitSummary, ReportMetric, ReportRequest,
-    ReportSnapshot, SchedulePostForm, ServiceForm, ServiceSummary, StaleJobRecoverySummary,
-    SystemHealthCounts, SystemLogClearSummary, SystemLogExportSummary, SystemLogFile,
-    SystemMaintenanceSummary, TagForm, TagSummary, TwitterImportSummary,
+    DashboardSummary, ExternalMediaItem, FacebookImportSummary, FacebookInsightForm,
+    InstagramImportSummary, JobForm, JobSummary, LocalAiAltTextDraftSummary,
+    LocalAiMediaDerivativeSummary, LocalAiMediaPreflightSummary, LocalAiMediaSearchMatch,
+    LocalAiMediaSearchSummary, LocalAiMediaWarning, LocalAiModelUpscaleDerivativeForm,
+    LocalBackupExportSummary, LocalBackupRestoreForm, LocalBackupRestoreSummary, LocalDataSnapshot,
+    MastodonImportSummary, MediaCleanupSummary, MediaDownloadForm, MediaImportForm,
+    MediaLibraryItem, MediaLibraryRequest, MediaSummary, MetricForm, PostCalendarWindow,
+    PostContentBlock, PostDetail, PostForm, PostListAccount, PostListTag, PostQueryRequest,
+    PostQueryResult, PostSummary, PostValidationError, PostValidationReport, PostVersionForm,
+    ProviderCapability, RateLimitSummary, ReportMetric, ReportRequest, ReportSnapshot,
+    SchedulePostForm, ServiceForm, ServiceSummary, StaleJobRecoverySummary, SystemHealthCounts,
+    SystemLogClearSummary, SystemLogExportSummary, SystemLogFile, SystemMaintenanceSummary,
+    TagForm, TagSummary, TikTokAnalyticsImportForm, TikTokImportSummary, TwitterImportSummary,
     ValidatedMediaLibraryQuery, ValidatedPostQuery, WorkerJobOutcome, WorkerRunSummary,
     media_conversion_count, post_preview, post_schedule_status_label, post_status_label,
     provider_capabilities,
@@ -20,27 +23,32 @@ use crate::domain::{
 use crate::domain::{MediaForm, RateLimitForm};
 use crate::facebook::{
     FacebookError, FacebookPagePhotoUploadRequest, FacebookPagePublishRequest,
-    FacebookPageVideoUploadRequest, fetch_facebook_page_audience, fetch_facebook_page_insights,
-    publish_facebook_page_post, upload_facebook_page_photo, upload_facebook_page_video,
-    verify_facebook_page_account,
+    FacebookPageVideoUploadRequest, InstagramPublishRequest, fetch_facebook_page_audience,
+    fetch_facebook_page_insights, fetch_instagram_account_audience, fetch_instagram_media,
+    publish_facebook_page_post, publish_instagram_post, upload_facebook_page_photo,
+    upload_facebook_page_video, verify_facebook_page_account, verify_instagram_account,
 };
 use crate::mastodon::{
     MastodonError, MastodonMediaUploadRequest, MastodonPublishRequest,
     fetch_mastodon_account_metrics, fetch_mastodon_user_statuses, publish_mastodon_status,
     upload_mastodon_media, verify_mastodon_account,
 };
+use crate::media_staging::{MediaStagingRequest, stage_media_file};
 use crate::media_tools::media_tool_command;
 use crate::secrets::resolve_account_secret;
+use crate::tiktok::fetch_tiktok_broker_analytics;
 use crate::twitter::{
     TwitterError, TwitterMediaUploadRequest, TwitterPublishRequest, fetch_twitter_account_metrics,
     fetch_twitter_user_posts, publish_twitter_post, upload_twitter_media, verify_twitter_account,
 };
-use chrono::{Datelike, Duration, NaiveDate, Utc};
-use image::imageops::FilterType;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
+use image::{GenericImageView, ImageFormat, imageops::FilterType};
 use reqwest::{Url, blocking::Client, header::CONTENT_TYPE, redirect::Policy};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, Transaction, params, params_from_iter};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -55,7 +63,8 @@ const INITIAL_SCHEMA_VERSION: u16 = 1;
 const SYSTEM_LOGS_SCHEMA_VERSION: u16 = 2;
 const JOB_IDEMPOTENCY_SCHEMA_VERSION: u16 = 3;
 const SERVICE_CONFIGURATION_SCHEMA_VERSION: u16 = 4;
-const CURRENT_SCHEMA_VERSION: u16 = SERVICE_CONFIGURATION_SCHEMA_VERSION;
+const PROVIDER_PUBLICATIONS_SCHEMA_VERSION: u16 = 5;
+const CURRENT_SCHEMA_VERSION: u16 = PROVIDER_PUBLICATIONS_SCHEMA_VERSION;
 const INITIAL_SCHEMA_FILENAME: &str = "0001_initial.sql";
 const INITIAL_SCHEMA_SQL: &str = include_str!("../../migrations/0001_initial.sql");
 const SYSTEM_LOGS_SCHEMA_FILENAME: &str = "0002_system_logs.sql";
@@ -65,6 +74,9 @@ const JOB_IDEMPOTENCY_SCHEMA_SQL: &str = include_str!("../../migrations/0003_job
 const SERVICE_CONFIGURATION_SCHEMA_FILENAME: &str = "0004_service_configuration.sql";
 const SERVICE_CONFIGURATION_SCHEMA_SQL: &str =
     include_str!("../../migrations/0004_service_configuration.sql");
+const PROVIDER_PUBLICATIONS_SCHEMA_FILENAME: &str = "0005_provider_publications.sql";
+const PROVIDER_PUBLICATIONS_SCHEMA_SQL: &str =
+    include_str!("../../migrations/0005_provider_publications.sql");
 const SCHEMA_MIGRATIONS: &[SchemaMigration] = &[
     SchemaMigration {
         version: INITIAL_SCHEMA_VERSION,
@@ -85,6 +97,11 @@ const SCHEMA_MIGRATIONS: &[SchemaMigration] = &[
         version: SERVICE_CONFIGURATION_SCHEMA_VERSION,
         filename: SERVICE_CONFIGURATION_SCHEMA_FILENAME,
         sql: SERVICE_CONFIGURATION_SCHEMA_SQL,
+    },
+    SchemaMigration {
+        version: PROVIDER_PUBLICATIONS_SCHEMA_VERSION,
+        filename: PROVIDER_PUBLICATIONS_SCHEMA_FILENAME,
+        sql: PROVIDER_PUBLICATIONS_SCHEMA_SQL,
     },
 ];
 const MAX_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
@@ -139,6 +156,22 @@ struct PublishMediaAsset {
     temporary: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct StagedMediaPublication {
+    source_media_id: i64,
+    key: String,
+    url: String,
+    content_type: String,
+    bytes: u64,
+    expires_at: String,
+}
+
+#[derive(Debug, Clone)]
+struct InstagramPublishMediaUrls {
+    urls: Vec<String>,
+    staged_media: Vec<StagedMediaPublication>,
+}
+
 impl PublishMediaAsset {
     fn cleanup(&self) {
         if self.temporary {
@@ -188,6 +221,15 @@ struct GeneratedConversion {
     engine: &'static str,
     path: String,
     size: i64,
+}
+
+#[derive(Debug, Clone)]
+struct LocalAiImageProfile {
+    width: u32,
+    height: u32,
+    orientation: &'static str,
+    color_tone: Option<&'static str>,
+    brightness: Option<&'static str>,
 }
 
 impl MediaKindCounts {
@@ -874,6 +916,9 @@ impl Database {
         settings.admin_email = self
             .setting_value(&connection, "admin_email")?
             .unwrap_or(settings.admin_email);
+        settings.local_ai_media_labs = self
+            .setting_value(&connection, "local_ai_media_labs")?
+            .unwrap_or(settings.local_ai_media_labs);
         settings.default_accounts = self
             .setting_value(&connection, "default_accounts")?
             .unwrap_or(settings.default_accounts);
@@ -895,6 +940,11 @@ impl Database {
         )?;
         self.save_setting_value(&connection, "operator_name", &settings.operator_name)?;
         self.save_setting_value(&connection, "admin_email", &settings.admin_email)?;
+        self.save_setting_value(
+            &connection,
+            "local_ai_media_labs",
+            &settings.local_ai_media_labs,
+        )?;
         self.save_setting_value(&connection, "default_accounts", &settings.default_accounts)?;
 
         Ok(())
@@ -911,6 +961,7 @@ impl Database {
             tags: self.list_tags(&connection, 20)?,
             jobs: self.list_jobs(&connection, 20)?,
             rate_limits: self.list_rate_limits(&connection, 20)?,
+            provider_capabilities: provider_capabilities(),
         })
     }
 
@@ -1596,6 +1647,151 @@ impl Database {
         })
     }
 
+    pub fn refresh_instagram_account(&self, uuid: &str) -> Result<AccountSummary, DbError> {
+        let connection = self.connection()?;
+        let account: (String, String, Option<String>, String) = connection.query_row(
+            "SELECT provider, provider_id, data_json, access_token_secret_ref
+             FROM accounts
+             WHERE uuid = ?1",
+            params![uuid],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+
+        drop(connection);
+
+        let (provider, provider_id, data_json, access_token_secret_ref) = account;
+
+        if provider != "instagram" {
+            return Err(DbError::Validation(
+                "only Instagram accounts can be refreshed by this command".to_string(),
+            ));
+        }
+
+        if !instagram_connected_account_data(data_json.as_deref())? {
+            return Err(DbError::Validation(
+                "Instagram account must be connected before refresh".to_string(),
+            ));
+        }
+
+        let access_token = match resolve_account_secret("instagram", &provider_id, "access_token") {
+            Ok(value) => value,
+            Err(error) => {
+                self.set_account_authorized(uuid, false)?;
+                return Err(DbError::Validation(error.to_string()));
+            }
+        };
+        let api_version = self.service_configuration_value("facebook", "api_version")?;
+        let form = match verify_instagram_account(
+            &provider_id,
+            &access_token,
+            access_token_secret_ref,
+            data_json.as_deref(),
+            api_version.as_deref(),
+        ) {
+            Ok(form) => form,
+            Err(error) => {
+                if should_mark_facebook_unauthorized(&error) {
+                    self.set_account_authorized(uuid, false)?;
+                }
+                return Err(DbError::Validation(error.to_string()));
+            }
+        };
+
+        self.save_account(&form)
+    }
+
+    pub fn import_instagram_account_data(
+        &self,
+        uuid: &str,
+    ) -> Result<InstagramImportSummary, DbError> {
+        let connection = self.connection()?;
+        let account: (i64, String, String, Option<String>) = connection.query_row(
+            "SELECT id, provider, provider_id, data_json
+             FROM accounts
+             WHERE uuid = ?1",
+            params![uuid],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+
+        drop(connection);
+
+        let (account_id, provider, provider_id, data_json) = account;
+
+        if provider != "instagram" {
+            return Err(DbError::Validation(
+                "only Instagram accounts can be imported by this command".to_string(),
+            ));
+        }
+
+        if !instagram_connected_account_data(data_json.as_deref())? {
+            return Err(DbError::Validation(
+                "Instagram account must be connected before import".to_string(),
+            ));
+        }
+
+        let access_token = match resolve_account_secret("instagram", &provider_id, "access_token") {
+            Ok(value) => value,
+            Err(error) => {
+                self.set_account_authorized(uuid, false)?;
+                return Err(DbError::Validation(error.to_string()));
+            }
+        };
+        let api_version = self.service_configuration_value("facebook", "api_version")?;
+        let audience = match fetch_instagram_account_audience(
+            &provider_id,
+            &access_token,
+            api_version.as_deref(),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                if should_mark_facebook_unauthorized(&error) {
+                    self.set_account_authorized(uuid, false)?;
+                }
+                return Err(DbError::Validation(error.to_string()));
+            }
+        };
+        let media = match fetch_instagram_media(&provider_id, &access_token, api_version.as_deref())
+        {
+            Ok(value) => value,
+            Err(error) => {
+                if should_mark_facebook_unauthorized(&error) {
+                    self.set_account_authorized(uuid, false)?;
+                }
+                return Err(DbError::Validation(error.to_string()));
+            }
+        };
+        let today = Utc::now().date_naive().to_string();
+        let audience_total = audience.get("followers_count").and_then(json_number_to_i64);
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+
+        if let Some(total) = audience_total {
+            transaction.execute(
+                "DELETE FROM audience
+                 WHERE account_id = ?1 AND date = ?2",
+                params![account_id, today],
+            )?;
+            transaction.execute(
+                "INSERT INTO audience (account_id, total, date)
+                 VALUES (?1, ?2, ?3)",
+                params![account_id, total, today],
+            )?;
+        }
+
+        let imported_posts = import_instagram_media_rows(&transaction, account_id, &media)?;
+        let metric_days = process_instagram_metric_days(&transaction, account_id)?;
+        transaction.commit()?;
+        let account =
+            self.account_by_provider_id(&self.connection()?, "instagram", &provider_id)?;
+
+        Ok(InstagramImportSummary {
+            account,
+            audience_total,
+            imported_posts,
+            metric_days,
+        })
+    }
+
     pub fn import_mastodon_account_data(
         &self,
         uuid: &str,
@@ -1687,6 +1883,160 @@ impl Database {
             audience_total,
             imported_posts,
             metric_days,
+        })
+    }
+
+    pub fn import_tiktok_analytics(
+        &self,
+        form: &TikTokAnalyticsImportForm,
+    ) -> Result<TikTokImportSummary, DbError> {
+        if form.account.provider.trim() != "tiktok" {
+            return Err(DbError::Validation(
+                "only TikTok accounts can be imported by this command".to_string(),
+            ));
+        }
+
+        let account = self.save_account(&form.account)?;
+        let imported_date = tiktok_import_date(form.imported_at.as_deref())?;
+        let audience_total = form.user.as_ref().and_then(tiktok_audience_total);
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+
+        if let Some(total) = audience_total {
+            transaction.execute(
+                "DELETE FROM audience
+                 WHERE account_id = ?1 AND date = ?2",
+                params![account.id, imported_date],
+            )?;
+            transaction.execute(
+                "INSERT INTO audience (account_id, total, date)
+                 VALUES (?1, ?2, ?3)",
+                params![account.id, total, imported_date],
+            )?;
+        }
+
+        let imported_posts = import_tiktok_video_rows(&transaction, account.id, &form.videos)?;
+        let metric_days = process_tiktok_metric_days(&transaction, account.id)?;
+        transaction.commit()?;
+        let account =
+            self.account_by_provider_id(&self.connection()?, "tiktok", &account.provider_id)?;
+
+        Ok(TikTokImportSummary {
+            account,
+            audience_total,
+            imported_posts,
+            metric_days,
+        })
+    }
+
+    pub fn import_tiktok_account_data(&self, uuid: &str) -> Result<TikTokImportSummary, DbError> {
+        let connection = self.connection()?;
+        let account: (
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            bool,
+            String,
+            Option<String>,
+        ) = connection.query_row(
+            "SELECT provider, provider_id, name, username, avatar_path, authorized,
+                    access_token_secret_ref, data_json
+             FROM accounts
+             WHERE uuid = ?1",
+            params![uuid],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get::<_, i64>(5)? == 1,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )?;
+
+        drop(connection);
+
+        let (
+            provider,
+            provider_id,
+            name,
+            username,
+            avatar_path,
+            authorized,
+            access_token_secret_ref,
+            data_json,
+        ) = account;
+
+        if provider != "tiktok" {
+            return Err(DbError::Validation(
+                "only TikTok accounts can be imported by this command".to_string(),
+            ));
+        }
+
+        if !authorized {
+            return Err(DbError::Validation(
+                "TikTok account must be connected before import".to_string(),
+            ));
+        }
+
+        let broker_base_url = self
+            .service_configuration_value("tiktok", "broker_base_url")?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                DbError::Validation(
+                    "TikTok broker URL must be configured in Services before import".to_string(),
+                )
+            })?;
+        let broker_connection =
+            match resolve_account_secret("tiktok", &provider_id, "broker_connection") {
+                Ok(value) => value,
+                Err(error) => {
+                    self.set_account_authorized(uuid, false)?;
+                    return Err(DbError::Validation(error.to_string()));
+                }
+            };
+        let analytics =
+            fetch_tiktok_broker_analytics(&broker_base_url, &provider_id, &broker_connection)
+                .map_err(|error| DbError::Validation(error.to_string()))?;
+        let user = tiktok_broker_user(&analytics);
+        let videos = tiktok_broker_videos(&analytics);
+        let now = Utc::now().to_rfc3339();
+        let mut metadata = data_json
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+
+        metadata.insert(
+            "auth".to_string(),
+            serde_json::Value::String("broker".to_string()),
+        );
+        metadata.insert(
+            "last_broker_import_at".to_string(),
+            serde_json::Value::String(now.clone()),
+        );
+
+        self.import_tiktok_analytics(&TikTokAnalyticsImportForm {
+            account: AccountForm {
+                name,
+                username,
+                provider: "tiktok".to_string(),
+                provider_id,
+                authorized: true,
+                avatar_path,
+                access_token_secret_ref,
+                data: Some(serde_json::Value::Object(metadata)),
+            },
+            user,
+            videos,
+            imported_at: Some(now),
         })
     }
 
@@ -1976,6 +2326,685 @@ impl Database {
         )?;
 
         self.media_by_uuid(&connection, &uuid)
+    }
+
+    pub fn local_ai_preflight_media(
+        &self,
+        uuid: &str,
+    ) -> Result<LocalAiMediaPreflightSummary, DbError> {
+        let connection = self.connection()?;
+        let media = self.media_by_uuid(&connection, uuid)?;
+        let mut warnings = Vec::new();
+        let mut metadata = serde_json::json!({
+            "ai_media": {
+                "operation": "preflight",
+                "runtime": "deterministic_local_mvp",
+                "model": {
+                    "name": "none",
+                    "version": "deterministic-profile-v1",
+                    "license": "not_applicable"
+                }
+            }
+        });
+
+        if media.mime_type == "image/gif" {
+            warnings.push(LocalAiMediaWarning {
+                code: "gif_not_upscalable".to_string(),
+                severity: "info".to_string(),
+                message: "GIFs are publishable where providers support them, but local AI image derivatives are limited to static images for MVP.".to_string(),
+            });
+        } else if media.mime_type.starts_with("image/") {
+            let profile = self.local_media_image_profile(&media.disk, &media.path)?;
+            if let Some(profile) = profile {
+                metadata["profile"] = local_ai_profile_metadata(&profile);
+                metadata["dimensions"] =
+                    serde_json::json!({ "width": profile.width, "height": profile.height });
+
+                if profile.width < 1080 || profile.height < 1080 {
+                    warnings.push(LocalAiMediaWarning {
+                        code: "low_resolution".to_string(),
+                        severity: "warning".to_string(),
+                        message: "Image is below 1080 px on at least one edge; consider a reviewed derivative for image-heavy platforms.".to_string(),
+                    });
+                }
+
+                let aspect = profile.width as f64 / profile.height.max(1) as f64;
+                metadata["aspect_ratio"] = serde_json::json!(aspect);
+
+                if !(0.56..=1.91).contains(&aspect) {
+                    warnings.push(LocalAiMediaWarning {
+                        code: "provider_crop_risk".to_string(),
+                        severity: "warning".to_string(),
+                        message: "Aspect ratio may need a provider-specific crop before Instagram or Facebook publishing.".to_string(),
+                    });
+                }
+            } else {
+                warnings.push(LocalAiMediaWarning {
+                    code: "image_dimensions_unavailable".to_string(),
+                    severity: "warning".to_string(),
+                    message: "Image dimensions could not be read locally.".to_string(),
+                });
+            }
+        } else if media.mime_type.starts_with("video/") {
+            warnings.push(LocalAiMediaWarning {
+                code: "video_metadata_only".to_string(),
+                severity: "info".to_string(),
+                message: "Video preflight uses file metadata in MVP; frame-level checks require the packaged media sidecars.".to_string(),
+            });
+        } else {
+            warnings.push(LocalAiMediaWarning {
+                code: "unsupported_media_type".to_string(),
+                severity: "warning".to_string(),
+                message: "Local AI media tools currently support images and advisory metadata for video files.".to_string(),
+            });
+        }
+
+        if media.size_total > 20 * 1024 * 1024 {
+            warnings.push(LocalAiMediaWarning {
+                code: "large_file".to_string(),
+                severity: "warning".to_string(),
+                message: "Large media files may hit provider upload limits or take longer to process locally.".to_string(),
+            });
+        }
+
+        if warnings.is_empty() {
+            warnings.push(LocalAiMediaWarning {
+                code: "preflight_ok".to_string(),
+                severity: "ok".to_string(),
+                message: "No local preflight issues found for this media item.".to_string(),
+            });
+        }
+
+        Ok(LocalAiMediaPreflightSummary {
+            media,
+            runtime: "deterministic_local_mvp".to_string(),
+            warnings,
+            metadata,
+        })
+    }
+
+    pub fn create_local_ai_upscale_derivative(
+        &self,
+        uuid: &str,
+        scale_factor: u8,
+    ) -> Result<LocalAiMediaDerivativeSummary, DbError> {
+        let scale = scale_factor.clamp(2, 4);
+        self.create_local_ai_image_derivative(uuid, "upscale", Some(scale), None)
+    }
+
+    pub fn save_local_ai_model_upscale_derivative(
+        &self,
+        form: &LocalAiModelUpscaleDerivativeForm,
+    ) -> Result<LocalAiMediaDerivativeSummary, DbError> {
+        if form.scale_factor != 4 {
+            return Err(DbError::Validation(
+                "bundled Local AI upscaling model requires x4 output".to_string(),
+            ));
+        }
+
+        if form.input_width == 0 || form.input_height == 0 {
+            return Err(DbError::Validation(
+                "Local AI model input dimensions are required".to_string(),
+            ));
+        }
+
+        let mut connection = self.connection()?;
+        let source = self.media_by_uuid(&connection, form.uuid.trim())?;
+
+        if !source.mime_type.starts_with("image/") || source.mime_type == "image/gif" {
+            return Err(DbError::Validation(
+                "Local AI derivatives require a static image source".to_string(),
+            ));
+        }
+
+        let Some(resource_path) = self.media_resource_path(&source.disk, &source.path) else {
+            return Err(DbError::Validation(
+                "Local AI derivatives require media in local app storage".to_string(),
+            ));
+        };
+
+        if resource_path.starts_with("http://") || resource_path.starts_with("https://") {
+            return Err(DbError::Validation(
+                "Local AI derivatives require media in local app storage".to_string(),
+            ));
+        }
+
+        let source_path = PathBuf::from(resource_path);
+        let (source_width, source_height) =
+            image::image_dimensions(&source_path).map_err(|error| {
+                DbError::Validation(format!("source image dimensions unavailable: {error}"))
+            })?;
+        let source_sha256 = sha256_file(&source_path)?;
+        let png_bytes = decode_local_ai_png_data_url(&form.image_data_url)?;
+        validate_media_upload(
+            "image/png",
+            u64::try_from(png_bytes.len()).map_err(|_| {
+                DbError::Validation("model derivative is too large to track".to_string())
+            })?,
+        )?;
+
+        let output =
+            image::load_from_memory_with_format(&png_bytes, ImageFormat::Png).map_err(|error| {
+                DbError::Validation(format!(
+                    "model derivative PNG could not be decoded: {error}"
+                ))
+            })?;
+        let (output_width, output_height) = output.dimensions();
+        let expected_width = form
+            .input_width
+            .saturating_mul(u32::from(form.scale_factor));
+        let expected_height = form
+            .input_height
+            .saturating_mul(u32::from(form.scale_factor));
+
+        if output_width != expected_width || output_height != expected_height {
+            return Err(DbError::Validation(format!(
+                "model derivative dimensions must be {expected_width}x{expected_height}, got {output_width}x{output_height}"
+            )));
+        }
+
+        let output_sha256 = sha256_hex(&png_bytes);
+        let derivative_uuid = Uuid::new_v4().to_string();
+        let filename = media_storage_filename_from_extension(&derivative_uuid, Some("png"));
+        let media_directory = self.media_storage_directory();
+        let destination_path = media_directory.join(&filename);
+        let relative_path = format!("media/{filename}");
+        fs::create_dir_all(&media_directory)?;
+        fs::write(&destination_path, png_bytes)?;
+        let size = i64::try_from(fs::metadata(&destination_path)?.len()).map_err(|_| {
+            DbError::Validation("model derivative media is too large to track".to_string())
+        })?;
+        let now = Utc::now().to_rfc3339();
+        let derivative_name = format!("{} AI model upscale x{}", source.name, form.scale_factor);
+        let metadata = serde_json::json!({
+            "ai_media": {
+                "derivative": true,
+                "operation": "model_upscale",
+                "runtime": "litert_js_model_mvp",
+                "model": {
+                    "id": local_ai_metadata_string(&form.model_id, "unknown", 160),
+                    "name": local_ai_metadata_string(&form.model_name, "Unknown model", 160),
+                    "version": local_ai_metadata_string(&form.model_version, "unknown", 160),
+                    "license": local_ai_metadata_string(&form.model_license, "unknown", 80),
+                    "source_url": local_ai_metadata_string(&form.model_source_url, "", 500),
+                    "license_url": local_ai_metadata_string(&form.model_license_url, "", 500),
+                    "precision": local_ai_metadata_string(&form.model_precision, "unknown", 80)
+                },
+                "accelerator": local_ai_metadata_string(&form.accelerator, "unknown", 80),
+                "source_media": {
+                    "id": source.id,
+                    "uuid": source.uuid,
+                    "path": source.path
+                },
+                "source_media_id": source.id,
+                "source_media_uuid": source.uuid,
+                "scale_factor": form.scale_factor,
+                "tile_size": form.tile_size,
+                "tiled": true,
+                "preserved_original": true,
+                "file_hashes": {
+                    "algorithm": "sha256",
+                    "source": source_sha256,
+                    "output": output_sha256
+                },
+                "source_dimensions": {
+                    "width": source_width,
+                    "height": source_height
+                },
+                "processing_source_dimensions": {
+                    "width": form.input_width,
+                    "height": form.input_height,
+                    "original_width": form.original_width,
+                    "original_height": form.original_height
+                },
+                "output_dimensions": {
+                    "width": output_width,
+                    "height": output_height
+                },
+                "embedding": null,
+                "alt_text": null,
+                "created_at": now
+            }
+        });
+        let stored = StoredMediaFile {
+            original_name: derivative_name.clone(),
+            mime_type: "image/png".to_string(),
+            relative_path: relative_path.clone(),
+            absolute_path: destination_path,
+            size,
+        };
+        let conversions = self.media_conversion_artifacts(&derivative_uuid, &stored)?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO media (
+                uuid, name, mime_type, disk, path, data_json, size, size_total,
+                conversions_json, created_at, updated_at
+             )
+             VALUES (?1, ?2, ?3, 'local', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                derivative_uuid,
+                derivative_name,
+                stored.mime_type,
+                stored.relative_path,
+                metadata.to_string(),
+                stored.size,
+                conversions.size_total,
+                conversions.conversions_json,
+                now,
+                now
+            ],
+        )?;
+        transaction.commit()?;
+
+        let derivative = self.media_by_uuid(&connection, &derivative_uuid)?;
+
+        Ok(LocalAiMediaDerivativeSummary {
+            source,
+            derivative,
+            operation: "model_upscale".to_string(),
+            runtime: "litert_js_model_mvp".to_string(),
+            metadata,
+        })
+    }
+
+    pub fn create_local_ai_crop_derivative(
+        &self,
+        uuid: &str,
+        target_ratio: &str,
+    ) -> Result<LocalAiMediaDerivativeSummary, DbError> {
+        self.create_local_ai_image_derivative(uuid, "smart_crop", None, Some(target_ratio))
+    }
+
+    pub fn local_ai_media_search(&self, query: &str) -> Result<LocalAiMediaSearchSummary, DbError> {
+        let query = query.trim().to_lowercase();
+        let tokens = query
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+
+        let items = self.query_media_library(&MediaLibraryRequest {
+            keyword: None,
+            media_type: None,
+            limit: Some(200),
+        })?;
+        let mut matches = items
+            .into_iter()
+            .filter_map(|item| {
+                let mut score = 0;
+                let mut reasons = Vec::new();
+                let profile = if item.media_type == "image" && item.mime_type != "image/gif" {
+                    self.local_media_image_profile(&item.disk, &item.path)
+                        .ok()
+                        .flatten()
+                } else {
+                    None
+                };
+                let profile_terms = profile
+                    .as_ref()
+                    .map(|profile| {
+                        [
+                            Some(profile.orientation),
+                            profile.color_tone,
+                            profile.brightness,
+                        ]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                    })
+                    .unwrap_or_default();
+                let searchable = format!(
+                    "{} {} {} {}",
+                    item.name, item.mime_type, item.media_type, item.path
+                )
+                .to_lowercase();
+                let searchable = format!("{searchable} {profile_terms}");
+
+                for token in &tokens {
+                    if searchable.contains(token) {
+                        score += 10;
+                        reasons.push(format!("matches {token}"));
+                    }
+                }
+
+                if tokens.iter().any(|token| token == "image") && item.media_type == "image" {
+                    score += 6;
+                    reasons.push("image media".to_string());
+                }
+                if tokens.iter().any(|token| token == "video") && item.media_type == "video" {
+                    score += 6;
+                    reasons.push("video media".to_string());
+                }
+                if tokens.iter().any(|token| token == "gif") && item.media_type == "gif" {
+                    score += 6;
+                    reasons.push("GIF media".to_string());
+                }
+                if tokens.iter().any(|token| token == "large") && item.size_total > 5 * 1024 * 1024
+                {
+                    score += 4;
+                    reasons.push("large file".to_string());
+                }
+                if let Some(profile) = &profile {
+                    if tokens.iter().any(|token| token == profile.orientation) {
+                        score += 8;
+                        reasons.push(format!("{} image", profile.orientation));
+                    }
+                    if profile
+                        .color_tone
+                        .is_some_and(|tone| tokens.iter().any(|token| token == tone))
+                    {
+                        score += 6;
+                        reasons.push("matching color tone".to_string());
+                    }
+                    if profile
+                        .brightness
+                        .is_some_and(|brightness| tokens.iter().any(|token| token == brightness))
+                    {
+                        score += 5;
+                        reasons.push("matching brightness".to_string());
+                    }
+                    if tokens
+                        .iter()
+                        .any(|token| matches!(token.as_str(), "small" | "lowres"))
+                        && (profile.width < 1080 || profile.height < 1080)
+                    {
+                        score += 4;
+                        reasons.push("low-resolution image".to_string());
+                    }
+                }
+
+                if score == 0 && tokens.is_empty() {
+                    score = 1;
+                    reasons.push("recent media".to_string());
+                }
+
+                (score > 0).then_some(LocalAiMediaSearchMatch {
+                    media: item,
+                    score,
+                    reasons,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        matches.sort_by(|left, right| {
+            right
+                .score
+                .cmp(&left.score)
+                .then_with(|| left.media.name.cmp(&right.media.name))
+        });
+        matches.truncate(20);
+
+        Ok(LocalAiMediaSearchSummary {
+            query,
+            runtime: "local_metadata_profile_search_mvp".to_string(),
+            matches,
+        })
+    }
+
+    pub fn draft_local_ai_alt_text(
+        &self,
+        uuid: &str,
+    ) -> Result<LocalAiAltTextDraftSummary, DbError> {
+        let connection = self.connection()?;
+        let media = self.media_by_uuid(&connection, uuid)?;
+        let profile = if media.mime_type.starts_with("image/") && media.mime_type != "image/gif" {
+            self.local_media_image_profile(&media.disk, &media.path)?
+        } else {
+            None
+        };
+        let alt_text = match &profile {
+            Some(profile) => {
+                let mut details = vec![format!(
+                    "{} image named {}, {} by {} pixels",
+                    profile.orientation, media.name, profile.width, profile.height
+                )];
+
+                if let Some(color_tone) = profile.color_tone {
+                    details.push(format!("mostly {color_tone}-toned"));
+                }
+
+                if let Some(brightness) = profile.brightness {
+                    details.push(format!("{brightness} overall"));
+                }
+
+                format!("{}.", details.join(", "))
+            }
+            None => format!("{} file named {}.", media.mime_type, media.name),
+        };
+        let metadata = serde_json::json!({
+            "ai_media": {
+                "operation": "alt_text",
+                "runtime": "deterministic_local_mvp",
+                "source_media_id": media.id,
+                "source_media_uuid": media.uuid,
+                "embedding": null,
+                "profile": profile.as_ref().map(local_ai_profile_metadata),
+                "alt_text": {
+                    "review_required": true,
+                    "model": {
+                        "name": "none",
+                        "version": "deterministic-profile-v1",
+                        "license": "not_applicable"
+                    }
+                }
+            }
+        });
+
+        Ok(LocalAiAltTextDraftSummary {
+            media,
+            alt_text,
+            runtime: "deterministic_local_mvp".to_string(),
+            metadata,
+        })
+    }
+
+    fn create_local_ai_image_derivative(
+        &self,
+        source_uuid: &str,
+        operation: &str,
+        scale_factor: Option<u8>,
+        target_ratio: Option<&str>,
+    ) -> Result<LocalAiMediaDerivativeSummary, DbError> {
+        let mut connection = self.connection()?;
+        let source = self.media_by_uuid(&connection, source_uuid)?;
+
+        if !source.mime_type.starts_with("image/") || source.mime_type == "image/gif" {
+            return Err(DbError::Validation(
+                "Local AI derivatives require a static image source".to_string(),
+            ));
+        }
+
+        let Some(resource_path) = self.media_resource_path(&source.disk, &source.path) else {
+            return Err(DbError::Validation(
+                "Local AI derivatives require media in local app storage".to_string(),
+            ));
+        };
+
+        if resource_path.starts_with("http://") || resource_path.starts_with("https://") {
+            return Err(DbError::Validation(
+                "Local AI derivatives require media in local app storage".to_string(),
+            ));
+        }
+
+        let source_path = PathBuf::from(resource_path);
+        let source_sha256 = sha256_file(&source_path)?;
+        let image = image::open(&source_path).map_err(|error| {
+            DbError::Validation(format!("source image could not be opened: {error}"))
+        })?;
+        let (source_width, source_height) = image.dimensions();
+        let output = match operation {
+            "upscale" => {
+                let scale = u32::from(scale_factor.unwrap_or(2));
+                image.resize(
+                    source_width.saturating_mul(scale),
+                    source_height.saturating_mul(scale),
+                    FilterType::Lanczos3,
+                )
+            }
+            "smart_crop" => {
+                let (ratio_width, ratio_height, ratio_label) =
+                    local_ai_target_ratio(target_ratio.unwrap_or("square"))?;
+                let (x, y, width, height) =
+                    centered_crop_rect(source_width, source_height, ratio_width, ratio_height);
+                let mut cropped = image.crop_imm(x, y, width, height);
+                cropped = cropped.resize(width, height, FilterType::Lanczos3);
+                let _ = ratio_label;
+                cropped
+            }
+            _ => {
+                return Err(DbError::Validation(
+                    "unknown local AI derivative operation".to_string(),
+                ));
+            }
+        };
+        let (output_width, output_height) = output.dimensions();
+        let derivative_uuid = Uuid::new_v4().to_string();
+        let filename = media_storage_filename_from_extension(&derivative_uuid, Some("png"));
+        let media_directory = self.media_storage_directory();
+        let destination_path = media_directory.join(&filename);
+        let relative_path = format!("media/{filename}");
+        fs::create_dir_all(&media_directory)?;
+        output.save(&destination_path).map_err(|error| {
+            DbError::Validation(format!("derivative image could not be saved: {error}"))
+        })?;
+        let output_sha256 = sha256_file(&destination_path)?;
+        let size = i64::try_from(fs::metadata(&destination_path)?.len()).map_err(|_| {
+            DbError::Validation("derivative media is too large to track".to_string())
+        })?;
+        let now = Utc::now().to_rfc3339();
+        let derivative_name = match operation {
+            "upscale" => format!("{} AI upscale x{}", source.name, scale_factor.unwrap_or(2)),
+            "smart_crop" => {
+                let (_, _, ratio_label) = local_ai_target_ratio(target_ratio.unwrap_or("square"))?;
+                format!("{} AI crop {}", source.name, ratio_label)
+            }
+            _ => source.name.clone(),
+        };
+        let metadata = serde_json::json!({
+            "ai_media": {
+                "derivative": true,
+                "operation": operation,
+                "runtime": "deterministic_lanczos_mvp",
+                "model": {
+                    "name": "none",
+                    "version": "deterministic-image-ops-v1",
+                    "license": "not_applicable"
+                },
+                "source_media": {
+                    "id": source.id,
+                    "uuid": source.uuid,
+                    "path": source.path
+                },
+                "source_media_id": source.id,
+                "source_media_uuid": source.uuid,
+                "scale_factor": scale_factor,
+                "target_ratio": target_ratio,
+                "file_hashes": {
+                    "algorithm": "sha256",
+                    "source": source_sha256,
+                    "output": output_sha256
+                },
+                "source_dimensions": {
+                    "width": source_width,
+                    "height": source_height
+                },
+                "output_dimensions": {
+                    "width": output_width,
+                    "height": output_height
+                },
+                "embedding": null,
+                "alt_text": null,
+                "created_at": now
+            }
+        });
+        let stored = StoredMediaFile {
+            original_name: derivative_name.clone(),
+            mime_type: "image/png".to_string(),
+            relative_path: relative_path.clone(),
+            absolute_path: destination_path,
+            size,
+        };
+        let conversions = self.media_conversion_artifacts(&derivative_uuid, &stored)?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO media (
+                uuid, name, mime_type, disk, path, data_json, size, size_total,
+                conversions_json, created_at, updated_at
+             )
+             VALUES (?1, ?2, ?3, 'local', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                derivative_uuid,
+                derivative_name,
+                stored.mime_type,
+                stored.relative_path,
+                metadata.to_string(),
+                stored.size,
+                conversions.size_total,
+                conversions.conversions_json,
+                now,
+                now
+            ],
+        )?;
+        transaction.commit()?;
+
+        let derivative = self.media_by_uuid(&connection, &derivative_uuid)?;
+
+        Ok(LocalAiMediaDerivativeSummary {
+            source,
+            derivative,
+            operation: operation.to_string(),
+            runtime: "deterministic_lanczos_mvp".to_string(),
+            metadata,
+        })
+    }
+
+    fn local_media_image_profile(
+        &self,
+        disk: &str,
+        path: &str,
+    ) -> Result<Option<LocalAiImageProfile>, DbError> {
+        let Some(resource_path) = self.media_resource_path(disk, path) else {
+            return Ok(None);
+        };
+
+        if resource_path.starts_with("http://") || resource_path.starts_with("https://") {
+            return Ok(None);
+        }
+
+        let image = image::open(&resource_path)
+            .map_err(|error| DbError::Validation(format!("image profile unavailable: {error}")))?;
+        let (width, height) = image.dimensions();
+        let sample = image.resize(32, 32, FilterType::Triangle).to_rgb8();
+        let mut red_total = 0_u64;
+        let mut green_total = 0_u64;
+        let mut blue_total = 0_u64;
+        let mut pixel_count = 0_u64;
+
+        for pixel in sample.pixels() {
+            red_total += u64::from(pixel[0]);
+            green_total += u64::from(pixel[1]);
+            blue_total += u64::from(pixel[2]);
+            pixel_count += 1;
+        }
+
+        let (red, green, blue) = if pixel_count > 0 {
+            (
+                (red_total / pixel_count) as u8,
+                (green_total / pixel_count) as u8,
+                (blue_total / pixel_count) as u8,
+            )
+        } else {
+            (0, 0, 0)
+        };
+
+        Ok(Some(LocalAiImageProfile {
+            width,
+            height,
+            orientation: local_ai_orientation(width, height),
+            color_tone: local_ai_color_tone(red, green, blue),
+            brightness: local_ai_brightness(red, green, blue),
+        }))
     }
 
     pub fn delete_media(&self, uuid: &str) -> Result<bool, DbError> {
@@ -2934,9 +3963,23 @@ impl Database {
                 ),
                 Err(error) => return self.fail_reserved_job(job, &error.to_string()),
             },
+            "instagram" => match self.import_instagram_account_data(&uuid) {
+                Ok(summary) => format!(
+                    "imported Instagram account {}: {} media item(s), {} metric day(s)",
+                    summary.account.name, summary.imported_posts, summary.metric_days
+                ),
+                Err(error) => return self.fail_reserved_job(job, &error.to_string()),
+            },
             "mastodon" => match self.import_mastodon_account_data(&uuid) {
                 Ok(summary) => format!(
                     "imported Mastodon account {}: {} post(s), {} metric day(s)",
+                    summary.account.name, summary.imported_posts, summary.metric_days
+                ),
+                Err(error) => return self.fail_reserved_job(job, &error.to_string()),
+            },
+            "tiktok" => match self.import_tiktok_account_data(&uuid) {
+                Ok(summary) => format!(
+                    "imported TikTok account {}: {} video(s), {} metric day(s)",
                     summary.account.name, summary.imported_posts, summary.metric_days
                 ),
                 Err(error) => return self.fail_reserved_job(job, &error.to_string()),
@@ -3346,6 +4389,16 @@ impl Database {
                     "Facebook Page account must be connected before publishing",
                 )
             }
+            "instagram" => {
+                if instagram_connected_account_data(target.account_data_json.as_deref())? {
+                    return self.publish_instagram_target(target, now);
+                }
+
+                failed_publish_result(
+                    target,
+                    "Instagram account must be connected before publishing",
+                )
+            }
             provider => failed_publish_result(
                 target,
                 &format!("{provider} publishing is not supported yet"),
@@ -3669,6 +4722,165 @@ impl Database {
         })
     }
 
+    fn publish_instagram_target(
+        &self,
+        target: &PublishTarget,
+        now: &str,
+    ) -> Result<PublishAccountResult, DbError> {
+        let text = validation_text(&target.content.body);
+        let access_token =
+            match resolve_account_secret("instagram", &target.provider_id, "access_token") {
+                Ok(value) => value,
+                Err(error) => return failed_publish_result(target, &error.to_string()),
+            };
+        let api_version = self.service_configuration_value("facebook", "api_version")?;
+        let media = match self.instagram_publish_media_urls(&target.content) {
+            Ok(media) => media,
+            Err(error) => return failed_publish_result(target, &error.to_string()),
+        };
+        let response = match publish_instagram_post(&InstagramPublishRequest {
+            instagram_id: target.provider_id.clone(),
+            access_token,
+            text,
+            media_urls: media.urls,
+            api_version,
+        }) {
+            Ok(response) => response,
+            Err(error) => return failed_publish_result(target, &error.to_string()),
+        };
+        let data_json = serde_json::json!({
+            "provider": "instagram",
+            "published_at": now,
+            "container_ids": response.container_ids,
+            "staged_media": media.staged_media,
+            "raw": response.raw
+        })
+        .to_string();
+
+        Ok(PublishAccountResult {
+            post_account_id: target.post_account_id,
+            provider_post_id: Some(response.id),
+            data_json: Some(data_json),
+            errors_json: None,
+            error_detail: None,
+            published_remotely: true,
+        })
+    }
+
+    fn instagram_publish_media_urls(
+        &self,
+        content: &PostContentBlock,
+    ) -> Result<InstagramPublishMediaUrls, DbError> {
+        let mut urls = Vec::new();
+        let mut staged_media = Vec::new();
+        let mut staging_base_url = None;
+
+        for media in &content.external_media {
+            media.validated_reference().map_err(DbError::Validation)?;
+
+            if media.url.starts_with("https://") {
+                urls.push(media.url.clone());
+            }
+        }
+
+        let connection = self.connection()?;
+
+        for media_id in &content.media {
+            let media: Option<(String, String, String, String, Option<String>)> = connection
+                .query_row(
+                    "SELECT uuid, disk, path, mime_type, data_json
+                     FROM media
+                     WHERE id = ?1",
+                    params![media_id],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            let Some((uuid, disk, path, mime_type, data_json)) = media else {
+                return Err(DbError::Validation(format!(
+                    "media {media_id} is missing and cannot be published to Instagram"
+                )));
+            };
+
+            if !mime_type.starts_with("image/") || mime_type == "image/gif" {
+                return Err(DbError::Validation(
+                    "Instagram MVP publishing supports static images; use provider-specific validation for reels/video later"
+                        .to_string(),
+                ));
+            }
+
+            if path.starts_with("https://") {
+                urls.push(path);
+                continue;
+            }
+
+            if let Some(url) = media_external_https_url(data_json.as_deref())? {
+                urls.push(url);
+                continue;
+            }
+
+            if disk == "local" {
+                let base_url = match staging_base_url.as_deref() {
+                    Some(value) => value,
+                    None => {
+                        let value = self
+                            .service_configuration_value("media_staging", "base_url")?
+                            .map(|value| value.trim().to_string())
+                            .filter(|value| !value.is_empty())
+                            .ok_or_else(|| {
+                                DbError::Validation(
+                                    "Instagram publishing local media requires the Media Staging service base URL"
+                                        .to_string(),
+                                )
+                            })?;
+                        staging_base_url = Some(value);
+                        staging_base_url.as_deref().unwrap_or_default()
+                    }
+                };
+                let Some(resource_path) = self.media_resource_path(&disk, &path) else {
+                    return Err(DbError::Validation(format!(
+                        "media {media_id} does not have a readable local file path"
+                    )));
+                };
+                let staged = stage_media_file(&MediaStagingRequest {
+                    base_url: base_url.to_string(),
+                    file_path: PathBuf::from(resource_path),
+                    mime_type,
+                    source_media_id: uuid,
+                    operation: "instagram_publish".to_string(),
+                    ttl_seconds: Some(24 * 60 * 60),
+                })
+                .map_err(|error| DbError::Validation(error.to_string()))?;
+
+                urls.push(staged.url.clone());
+                staged_media.push(StagedMediaPublication {
+                    source_media_id: *media_id,
+                    key: staged.key,
+                    url: staged.url,
+                    content_type: staged.content_type,
+                    bytes: staged.bytes,
+                    expires_at: staged.expires_at,
+                });
+                continue;
+            }
+        }
+
+        if urls.is_empty() {
+            return Err(DbError::Validation(
+                "Instagram publishing requires one static image".to_string(),
+            ));
+        }
+
+        Ok(InstagramPublishMediaUrls { urls, staged_media })
+    }
+
     fn finish_publish_post_job(
         &self,
         job: &JobSummary,
@@ -3932,6 +5144,20 @@ impl Database {
                 end,
                 &["replies", "reblogs", "favourites"],
             ),
+            "tiktok" => self.metric_json_sums(
+                connection,
+                account_id,
+                start,
+                end,
+                &["views", "likes", "comments", "shares"],
+            ),
+            "instagram" => self.metric_json_sums(
+                connection,
+                account_id,
+                start,
+                end,
+                &["likes", "comments", "media"],
+            ),
             "facebook_page" => self.facebook_insight_sums(connection, account_id, start, end),
             _ => Ok(Vec::new()),
         }
@@ -4157,6 +5383,19 @@ impl Database {
                 });
                 continue;
             };
+
+            if !capability.supports_publish {
+                errors.push(PostValidationError {
+                    account_id,
+                    provider: provider.clone(),
+                    code: "direct_publishing_not_supported".to_string(),
+                    message: format!(
+                        "{} uses assisted publishing or needs approved direct API publishing before scheduling",
+                        capability.display_name
+                    ),
+                });
+                continue;
+            }
 
             let content = versions
                 .iter()
@@ -5653,7 +6892,10 @@ fn should_mark_facebook_unauthorized(error: &FacebookError) -> bool {
 }
 
 fn supports_account_imports(provider: &str) -> bool {
-    matches!(provider, "twitter" | "facebook_page" | "mastodon")
+    matches!(
+        provider,
+        "twitter" | "facebook_page" | "instagram" | "mastodon" | "tiktok"
+    )
 }
 
 fn twitter_oauth2_account_data(data_json: Option<&str>) -> Result<bool, DbError> {
@@ -5672,6 +6914,40 @@ fn facebook_page_connected_account_data(data_json: Option<&str>) -> Result<bool,
     let value = serde_json::from_str::<serde_json::Value>(data_json)?;
 
     Ok(value.get("auth").and_then(serde_json::Value::as_str) == Some("facebook_user"))
+}
+
+fn instagram_connected_account_data(data_json: Option<&str>) -> Result<bool, DbError> {
+    let Some(data_json) = data_json else {
+        return Ok(false);
+    };
+    let value = serde_json::from_str::<serde_json::Value>(data_json)?;
+
+    Ok(value.get("auth").and_then(serde_json::Value::as_str) == Some("facebook_user"))
+}
+
+fn media_external_https_url(data_json: Option<&str>) -> Result<Option<String>, DbError> {
+    let Some(data_json) = data_json else {
+        return Ok(None);
+    };
+    let value = serde_json::from_str::<serde_json::Value>(data_json)?;
+    let direct = value
+        .get("external_url")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|url| url.starts_with("https://"))
+        .map(str::to_string);
+
+    if direct.is_some() {
+        return Ok(direct);
+    }
+
+    Ok(value
+        .get("download_data")
+        .and_then(|download_data| download_data.get("url"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|url| url.starts_with("https://"))
+        .map(str::to_string))
 }
 
 fn failed_publish_result(
@@ -5804,6 +7080,107 @@ fn process_twitter_metric_days(
     Ok(days.len())
 }
 
+fn import_instagram_media_rows(
+    transaction: &Transaction<'_>,
+    account_id: i64,
+    media: &[serde_json::Value],
+) -> Result<usize, DbError> {
+    let mut imported = 0;
+
+    for item in media {
+        let Some(provider_post_id) = item.get("id").and_then(json_value_to_string) else {
+            continue;
+        };
+        let Some(created_at) = instagram_media_date(item) else {
+            continue;
+        };
+        let caption = item
+            .get("caption")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let content_json = serde_json::json!({
+            "text": caption,
+            "media_type": item.get("media_type").and_then(serde_json::Value::as_str),
+            "media_product_type": item.get("media_product_type").and_then(serde_json::Value::as_str),
+            "media_url": item.get("media_url").and_then(serde_json::Value::as_str),
+            "thumbnail_url": item.get("thumbnail_url").and_then(serde_json::Value::as_str),
+            "permalink": item.get("permalink").and_then(serde_json::Value::as_str),
+        })
+        .to_string();
+        let metrics_json = serde_json::json!({
+            "likes": item.get("like_count").and_then(json_number_to_i64).unwrap_or(0),
+            "comments": item.get("comments_count").and_then(json_number_to_i64).unwrap_or(0),
+            "media": 1,
+        })
+        .to_string();
+
+        transaction.execute(
+            "INSERT INTO imported_posts (
+                account_id, provider_post_id, content_json, metrics_json, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(account_id, provider_post_id) DO UPDATE SET
+                content_json = excluded.content_json,
+                metrics_json = excluded.metrics_json,
+                created_at = excluded.created_at",
+            params![
+                account_id,
+                provider_post_id,
+                content_json,
+                metrics_json,
+                created_at
+            ],
+        )?;
+        imported += 1;
+    }
+
+    Ok(imported)
+}
+
+fn process_instagram_metric_days(
+    transaction: &Transaction<'_>,
+    account_id: i64,
+) -> Result<usize, DbError> {
+    let mut statement = transaction.prepare(
+        "SELECT created_at, metrics_json
+         FROM imported_posts
+         WHERE account_id = ?1",
+    )?;
+    let rows = statement.query_map(params![account_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut days = BTreeMap::<String, (i64, i64, i64)>::new();
+
+    for (date, metrics_json) in collect_rows(rows)? {
+        let value = serde_json::from_str::<serde_json::Value>(&metrics_json)?;
+        let entry = days.entry(date).or_insert((0, 0, 0));
+
+        entry.0 += value.get("likes").and_then(json_number_to_i64).unwrap_or(0);
+        entry.1 += value
+            .get("comments")
+            .and_then(json_number_to_i64)
+            .unwrap_or(0);
+        entry.2 += value.get("media").and_then(json_number_to_i64).unwrap_or(0);
+    }
+
+    for (date, (likes, comments, media_count)) in &days {
+        let data_json = serde_json::json!({
+            "likes": likes,
+            "comments": comments,
+            "media": media_count,
+        })
+        .to_string();
+
+        transaction.execute(
+            "INSERT INTO metrics (account_id, data_json, date)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
+            params![account_id, data_json, date],
+        )?;
+    }
+
+    Ok(days.len())
+}
+
 fn import_facebook_insight_rows(
     transaction: &Transaction<'_>,
     account_id: i64,
@@ -5891,6 +7268,66 @@ fn import_mastodon_status_rows(
     Ok(imported)
 }
 
+fn import_tiktok_video_rows(
+    transaction: &Transaction<'_>,
+    account_id: i64,
+    videos: &[serde_json::Value],
+) -> Result<usize, DbError> {
+    let mut imported = 0;
+
+    for video in videos {
+        let Some(provider_post_id) = video
+            .get("id")
+            .or_else(|| video.get("video_id"))
+            .and_then(json_value_to_string)
+        else {
+            continue;
+        };
+        let Some(created_at) = tiktok_video_date(video) else {
+            continue;
+        };
+        let content_json = serde_json::json!({
+            "text": video
+                .get("video_description")
+                .or_else(|| video.get("description"))
+                .or_else(|| video.get("title"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "share_url": video.get("share_url").cloned(),
+            "cover_image_url": video.get("cover_image_url").cloned(),
+            "duration": video.get("duration").cloned(),
+        })
+        .to_string();
+        let metrics_json = serde_json::json!({
+            "views": video.get("view_count").and_then(json_number_to_i64).unwrap_or(0),
+            "likes": video.get("like_count").and_then(json_number_to_i64).unwrap_or(0),
+            "comments": video.get("comment_count").and_then(json_number_to_i64).unwrap_or(0),
+            "shares": video.get("share_count").and_then(json_number_to_i64).unwrap_or(0),
+        })
+        .to_string();
+
+        transaction.execute(
+            "INSERT INTO imported_posts (
+                account_id, provider_post_id, content_json, metrics_json, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(account_id, provider_post_id) DO UPDATE SET
+                content_json = excluded.content_json,
+                metrics_json = excluded.metrics_json,
+                created_at = excluded.created_at",
+            params![
+                account_id,
+                provider_post_id,
+                content_json,
+                metrics_json,
+                created_at
+            ],
+        )?;
+        imported += 1;
+    }
+
+    Ok(imported)
+}
+
 fn process_mastodon_metric_days(
     transaction: &Transaction<'_>,
     account_id: i64,
@@ -5942,6 +7379,56 @@ fn process_mastodon_metric_days(
     Ok(days.len())
 }
 
+fn process_tiktok_metric_days(
+    transaction: &Transaction<'_>,
+    account_id: i64,
+) -> Result<usize, DbError> {
+    let mut statement = transaction.prepare(
+        "SELECT created_at, metrics_json
+         FROM imported_posts
+         WHERE account_id = ?1",
+    )?;
+    let rows = statement.query_map(params![account_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut days = BTreeMap::<String, (i64, i64, i64, i64)>::new();
+
+    for (date, metrics_json) in collect_rows(rows)? {
+        let value = serde_json::from_str::<serde_json::Value>(&metrics_json)?;
+        let entry = days.entry(date).or_insert((0, 0, 0, 0));
+
+        entry.0 += value.get("views").and_then(json_number_to_i64).unwrap_or(0);
+        entry.1 += value.get("likes").and_then(json_number_to_i64).unwrap_or(0);
+        entry.2 += value
+            .get("comments")
+            .and_then(json_number_to_i64)
+            .unwrap_or(0);
+        entry.3 += value
+            .get("shares")
+            .and_then(json_number_to_i64)
+            .unwrap_or(0);
+    }
+
+    for (date, (views, likes, comments, shares)) in &days {
+        let data_json = serde_json::json!({
+            "views": views,
+            "likes": likes,
+            "comments": comments,
+            "shares": shares,
+        })
+        .to_string();
+
+        transaction.execute(
+            "INSERT INTO metrics (account_id, data_json, date)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
+            params![account_id, data_json, date],
+        )?;
+    }
+
+    Ok(days.len())
+}
+
 fn mastodon_status_date(status: &serde_json::Value) -> Option<String> {
     let created_at = status.get("created_at")?.as_str()?.trim();
     let date = created_at.get(0..10)?;
@@ -5954,6 +7441,75 @@ fn twitter_post_date(post: &serde_json::Value) -> Option<String> {
     let date = created_at.get(0..10)?;
 
     (date.len() == 10).then(|| date.to_string())
+}
+
+fn instagram_media_date(media: &serde_json::Value) -> Option<String> {
+    let timestamp = media.get("timestamp")?.as_str()?.trim();
+    let date = timestamp.get(0..10)?;
+
+    (date.len() == 10).then(|| date.to_string())
+}
+
+fn tiktok_video_date(video: &serde_json::Value) -> Option<String> {
+    let created_at = video
+        .get("create_time")
+        .or_else(|| video.get("created_at"))
+        .or_else(|| video.get("created_time"))?;
+
+    if let Some(seconds) = created_at.as_i64() {
+        return DateTime::<Utc>::from_timestamp(seconds, 0)
+            .map(|value| value.date_naive().to_string());
+    }
+
+    let value = created_at.as_str()?.trim();
+
+    if let Ok(seconds) = value.parse::<i64>() {
+        return DateTime::<Utc>::from_timestamp(seconds, 0)
+            .map(|value| value.date_naive().to_string());
+    }
+
+    let date = value.get(0..10)?;
+
+    (date.len() == 10).then(|| date.to_string())
+}
+
+fn tiktok_import_date(imported_at: Option<&str>) -> Result<String, DbError> {
+    let Some(imported_at) = imported_at.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(Utc::now().date_naive().to_string());
+    };
+    let date = imported_at.get(0..10).ok_or_else(|| {
+        DbError::Validation("TikTok import date must use YYYY-MM-DD or RFC3339".to_string())
+    })?;
+
+    NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| {
+        DbError::Validation("TikTok import date must use YYYY-MM-DD or RFC3339".to_string())
+    })?;
+
+    Ok(date.to_string())
+}
+
+fn tiktok_broker_user(value: &serde_json::Value) -> Option<serde_json::Value> {
+    value
+        .get("user")
+        .or_else(|| value.get("user_info"))
+        .or_else(|| value.get("data").and_then(|data| data.get("user")))
+        .or_else(|| value.get("data").and_then(|data| data.get("user_info")))
+        .cloned()
+}
+
+fn tiktok_broker_videos(value: &serde_json::Value) -> Vec<serde_json::Value> {
+    value
+        .get("videos")
+        .or_else(|| value.get("data").and_then(|data| data.get("videos")))
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn tiktok_audience_total(user: &serde_json::Value) -> Option<i64> {
+    user.get("follower_count")
+        .or_else(|| user.get("followers_count"))
+        .and_then(json_number_to_i64)
 }
 
 fn facebook_insight_date(item: &serde_json::Value) -> Option<String> {
@@ -6008,6 +7564,105 @@ fn media_storage_filename_from_extension(uuid: &str, extension: Option<&str>) ->
     match extension {
         Some(extension) => format!("{uuid}.{extension}"),
         None => uuid.to_string(),
+    }
+}
+
+fn local_ai_target_ratio(value: &str) -> Result<(u32, u32, &'static str), DbError> {
+    match value.trim() {
+        "square" | "1:1" => Ok((1, 1, "1:1")),
+        "portrait" | "4:5" | "portrait_4_5" => Ok((4, 5, "4:5")),
+        "landscape" | "16:9" | "landscape_16_9" => Ok((16, 9, "16:9")),
+        "vertical" | "story" | "9:16" | "story_9_16" => Ok((9, 16, "9:16")),
+        _ => Err(DbError::Validation(
+            "target ratio must be square, portrait_4_5, landscape_16_9, or story_9_16".to_string(),
+        )),
+    }
+}
+
+fn local_ai_orientation(width: u32, height: u32) -> &'static str {
+    if width == height {
+        "square"
+    } else if width > height {
+        "landscape"
+    } else {
+        "portrait"
+    }
+}
+
+fn local_ai_color_tone(red: u8, green: u8, blue: u8) -> Option<&'static str> {
+    let max = red.max(green).max(blue);
+    let min = red.min(green).min(blue);
+
+    if max.saturating_sub(min) < 24 {
+        return Some("neutral");
+    }
+
+    if red >= green && red >= blue {
+        if green > blue.saturating_add(32) {
+            return Some("warm");
+        }
+
+        return Some("red");
+    }
+
+    if green >= red && green >= blue {
+        if blue > red.saturating_add(32) {
+            return Some("cool");
+        }
+
+        return Some("green");
+    }
+
+    if red > green.saturating_add(32) {
+        return Some("purple");
+    }
+
+    Some("blue")
+}
+
+fn local_ai_brightness(red: u8, green: u8, blue: u8) -> Option<&'static str> {
+    let luma = 0.2126 * f64::from(red) + 0.7152 * f64::from(green) + 0.0722 * f64::from(blue);
+
+    if luma < 70.0 {
+        Some("dark")
+    } else if luma > 185.0 {
+        Some("bright")
+    } else {
+        Some("balanced")
+    }
+}
+
+fn local_ai_profile_metadata(profile: &LocalAiImageProfile) -> serde_json::Value {
+    serde_json::json!({
+        "width": profile.width,
+        "height": profile.height,
+        "orientation": profile.orientation,
+        "color_tone": profile.color_tone,
+        "brightness": profile.brightness
+    })
+}
+
+fn centered_crop_rect(
+    source_width: u32,
+    source_height: u32,
+    ratio_width: u32,
+    ratio_height: u32,
+) -> (u32, u32, u32, u32) {
+    let source_width = source_width.max(1);
+    let source_height = source_height.max(1);
+    let target = ratio_width.max(1) as f64 / ratio_height.max(1) as f64;
+    let current = source_width as f64 / source_height as f64;
+
+    if current > target {
+        let width = ((source_height as f64 * target).round() as u32).clamp(1, source_width);
+        let x = (source_width - width) / 2;
+
+        (x, 0, width, source_height)
+    } else {
+        let height = ((source_width as f64 / target).round() as u32).clamp(1, source_height);
+        let y = (source_height - height) / 2;
+
+        (0, y, source_width, height)
     }
 }
 
@@ -6067,6 +7722,37 @@ fn validate_media_upload(mime_type: &str, size: u64) -> Result<(), DbError> {
     }
 
     Ok(())
+}
+
+fn decode_local_ai_png_data_url(data_url: &str) -> Result<Vec<u8>, DbError> {
+    let trimmed = data_url.trim();
+    let encoded = trimmed
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| {
+            DbError::Validation("Local AI derivative must be a PNG data URL".to_string())
+        })?;
+
+    BASE64_STANDARD.decode(encoded.as_bytes()).map_err(|error| {
+        DbError::Validation(format!("Local AI derivative could not be decoded: {error}"))
+    })
+}
+
+fn local_ai_metadata_string(value: &str, fallback: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let value = if trimmed.is_empty() {
+        fallback
+    } else {
+        trimmed
+    };
+    value.chars().take(max_chars).collect()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn sha256_file(path: &Path) -> Result<String, DbError> {
+    Ok(sha256_hex(&fs::read(path)?))
 }
 
 fn media_tool_path(env_var: &str, binary: &str) -> String {
@@ -6529,7 +8215,7 @@ fn format_system_log_size(bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
+    use std::io::{Cursor, Write as _};
     use std::net::TcpListener;
     use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -6590,6 +8276,40 @@ mod tests {
             serde_json::to_vec_pretty(manifest).expect("manifest should serialize"),
         )
         .expect("manifest should update");
+    }
+
+    fn png_data_url(width: u32, height: u32, color: image::Rgba<u8>) -> String {
+        let output = image::RgbaImage::from_pixel(width, height, color);
+        let mut png = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(output)
+            .write_to(&mut png, ImageFormat::Png)
+            .expect("PNG should encode");
+
+        format!(
+            "data:image/png;base64,{}",
+            BASE64_STANDARD.encode(png.into_inner())
+        )
+    }
+
+    fn model_upscale_form(uuid: &str) -> LocalAiModelUpscaleDerivativeForm {
+        LocalAiModelUpscaleDerivativeForm {
+            uuid: uuid.to_string(),
+            image_data_url: png_data_url(16, 16, image::Rgba([12, 30, 48, 255])),
+            scale_factor: 4,
+            model_id: "real-esrgan-x4plus-w8a8".to_string(),
+            model_name: "Real-ESRGAN-x4plus".to_string(),
+            model_version: "qai-hub-models-v0.57.3".to_string(),
+            model_license: "BSD-3-Clause".to_string(),
+            model_source_url: "https://example.test/model.zip".to_string(),
+            model_license_url: "https://example.test/LICENSE".to_string(),
+            model_precision: "w8a8".to_string(),
+            accelerator: "wasm".to_string(),
+            tile_size: 128,
+            input_width: 4,
+            input_height: 4,
+            original_width: 4,
+            original_height: 4,
+        }
     }
 
     #[test]
@@ -8666,6 +10386,200 @@ mod tests {
     }
 
     #[test]
+    fn saves_local_ai_model_upscale_derivative_with_metadata() {
+        let directory = temporary_path("dust-wave-social-local-ai-model-upscale-test");
+        fs::create_dir_all(&directory).expect("temporary directory should be created");
+
+        let source_path = directory.join("sample.png");
+        let image = image::RgbaImage::from_pixel(4, 4, image::Rgba([47, 128, 237, 255]));
+        image
+            .save(&source_path)
+            .expect("source media file should be written");
+
+        let database_path = directory.join("dust.sqlite3");
+        let database = Database::initialize_at(&database_path).expect("database should initialize");
+        let imported = database
+            .import_media_file(&MediaImportForm {
+                source_path: source_path.display().to_string(),
+                name: None,
+            })
+            .expect("media file should import");
+
+        let derivative = database
+            .save_local_ai_model_upscale_derivative(&model_upscale_form(&imported.uuid))
+            .expect("model derivative should save");
+
+        assert_eq!(derivative.source.uuid, imported.uuid);
+        assert_eq!(derivative.operation, "model_upscale");
+        assert_eq!(derivative.runtime, "litert_js_model_mvp");
+        assert_eq!(derivative.derivative.mime_type, "image/png");
+        assert_eq!(derivative.derivative.conversion_count, 1);
+        assert!(derivative.derivative.size_total > derivative.derivative.size);
+        assert_eq!(
+            derivative.metadata["ai_media"]["model"]["id"],
+            "real-esrgan-x4plus-w8a8"
+        );
+        assert_eq!(
+            derivative.metadata["ai_media"]["output_dimensions"]["width"],
+            16
+        );
+        assert_eq!(
+            derivative.metadata["ai_media"]["processing_source_dimensions"]["width"],
+            4
+        );
+        assert_eq!(
+            derivative.metadata["ai_media"]["file_hashes"]["algorithm"],
+            "sha256"
+        );
+        assert!(
+            derivative.metadata["ai_media"]["file_hashes"]["source"]
+                .as_str()
+                .is_some_and(|value| value.len() == 64)
+        );
+        assert!(
+            derivative.metadata["ai_media"]["file_hashes"]["output"]
+                .as_str()
+                .is_some_and(|value| value.len() == 64)
+        );
+        assert_eq!(database.media().expect("media should load").len(), 2);
+
+        fs::remove_dir_all(directory).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn local_ai_profile_search_and_alt_text_use_image_metadata() {
+        let directory = temporary_path("dust-wave-social-local-ai-profile-test");
+        fs::create_dir_all(&directory).expect("temporary directory should be created");
+
+        let source_path = directory.join("blue-landscape.png");
+        let image = image::RgbaImage::from_pixel(8, 4, image::Rgba([47, 128, 237, 255]));
+        image
+            .save(&source_path)
+            .expect("source media file should be written");
+
+        let database_path = directory.join("dust.sqlite3");
+        let database = Database::initialize_at(&database_path).expect("database should initialize");
+        let imported = database
+            .import_media_file(&MediaImportForm {
+                source_path: source_path.display().to_string(),
+                name: None,
+            })
+            .expect("media file should import");
+
+        let preflight = database
+            .local_ai_preflight_media(&imported.uuid)
+            .expect("preflight should run");
+        assert_eq!(
+            preflight.metadata["profile"]["orientation"],
+            serde_json::json!("landscape")
+        );
+        assert_eq!(
+            preflight.metadata["profile"]["color_tone"],
+            serde_json::json!("blue")
+        );
+
+        let search = database
+            .local_ai_media_search("blue landscape")
+            .expect("profile-backed search should run");
+        assert_eq!(search.runtime, "local_metadata_profile_search_mvp");
+        assert_eq!(search.matches[0].media.uuid, imported.uuid);
+        assert!(
+            search.matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("landscape"))
+        );
+
+        let draft = database
+            .draft_local_ai_alt_text(&imported.uuid)
+            .expect("alt text should draft");
+        assert!(draft.alt_text.contains("landscape image"));
+        assert!(draft.alt_text.contains("8 by 4 pixels"));
+        assert!(draft.alt_text.contains("blue-toned"));
+        assert_eq!(
+            draft.metadata["ai_media"]["alt_text"]["review_required"],
+            serde_json::json!(true)
+        );
+
+        fs::remove_dir_all(directory).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn backup_restore_preserves_local_ai_derivatives_and_metadata() {
+        let directory = temporary_path("dust-wave-social-local-ai-backup-test");
+        fs::create_dir_all(&directory).expect("temporary directory should be created");
+
+        let source_path = directory.join("sample.png");
+        let image = image::RgbaImage::from_pixel(4, 4, image::Rgba([47, 128, 237, 255]));
+        image
+            .save(&source_path)
+            .expect("source media file should be written");
+
+        let database_path = directory.join("dust.sqlite3");
+        let database = Database::initialize_at(&database_path).expect("database should initialize");
+        let imported = database
+            .import_media_file(&MediaImportForm {
+                source_path: source_path.display().to_string(),
+                name: None,
+            })
+            .expect("media file should import");
+        let derivative = database
+            .save_local_ai_model_upscale_derivative(&model_upscale_form(&imported.uuid))
+            .expect("model derivative should save");
+        let backup = database
+            .export_local_backup()
+            .expect("backup should export");
+
+        let restored_directory = temporary_path("dust-wave-social-local-ai-backup-restore-test");
+        fs::create_dir_all(&restored_directory).expect("restore directory should be created");
+        let restored_database_path = restored_directory.join("dust.sqlite3");
+        let restored_database =
+            Database::initialize_at(&restored_database_path).expect("restore database should init");
+        restored_database
+            .restore_local_backup(&LocalBackupRestoreForm {
+                backup_path: backup.path.clone(),
+            })
+            .expect("backup should restore into clean database");
+
+        let restored_media = restored_database
+            .media()
+            .expect("restored media should load");
+        assert_eq!(restored_media.len(), 2);
+        assert!(restored_directory.join(&imported.path).exists());
+        assert!(
+            restored_directory
+                .join(&derivative.derivative.path)
+                .exists()
+        );
+
+        let connection = restored_database
+            .connection()
+            .expect("restored database should open");
+        let data_json: String = connection
+            .query_row(
+                "SELECT data_json FROM media WHERE uuid = ?1",
+                params![derivative.derivative.uuid],
+                |row| row.get(0),
+            )
+            .expect("restored derivative metadata should load");
+        let data: serde_json::Value =
+            serde_json::from_str(&data_json).expect("metadata should be json");
+
+        assert_eq!(data["ai_media"]["operation"], "model_upscale");
+        assert_eq!(
+            data["ai_media"]["file_hashes"]["algorithm"],
+            serde_json::json!("sha256")
+        );
+        assert_eq!(
+            data["ai_media"]["preserved_original"],
+            serde_json::json!(true)
+        );
+
+        fs::remove_dir_all(restored_directory).expect("restore directory should be removed");
+        fs::remove_dir_all(directory).expect("temporary directory should be removed");
+    }
+
+    #[test]
     fn downloads_external_media_from_file_urls_into_app_storage() {
         let directory = std::env::temp_dir().join(format!(
             "dust-wave-social-media-download-test-{}",
@@ -9121,6 +11035,84 @@ mod tests {
         assert_eq!(report.metrics[0].value, 20);
         assert_eq!(report.metrics[1].key, "page_posts_impressions");
         assert_eq!(report.metrics[1].value, 500);
+
+        fs::remove_file(path).expect("temporary database should be removed");
+    }
+
+    #[test]
+    fn imports_tiktok_analytics_rows_and_builds_report() {
+        let path = std::env::temp_dir().join(format!(
+            "dust-wave-social-tiktok-report-test-{}.sqlite3",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+
+        let database = Database::initialize_at(&path).expect("database should initialize");
+        let summary = database
+            .import_tiktok_analytics(&TikTokAnalyticsImportForm {
+                account: AccountForm {
+                    name: "Dust Wave TikTok".to_string(),
+                    username: Some("dustwave".to_string()),
+                    provider: "tiktok".to_string(),
+                    provider_id: "dw-tiktok".to_string(),
+                    authorized: true,
+                    avatar_path: None,
+                    access_token_secret_ref: "secret://accounts/tiktok/dw-tiktok/broker_connection"
+                        .to_string(),
+                    data: Some(serde_json::json!({ "auth": "broker" })),
+                },
+                user: Some(serde_json::json!({
+                    "follower_count": 1200,
+                    "likes_count": 9000,
+                    "video_count": 2
+                })),
+                videos: vec![
+                    serde_json::json!({
+                        "id": "video-1",
+                        "video_description": "Launch clip",
+                        "create_time": "2026-06-22T12:00:00Z",
+                        "view_count": 100,
+                        "like_count": 10,
+                        "comment_count": 3,
+                        "share_count": 1
+                    }),
+                    serde_json::json!({
+                        "id": "video-2",
+                        "title": "Follow up",
+                        "create_time": "2026-06-23T12:00:00Z",
+                        "view_count": 200,
+                        "like_count": 20,
+                        "comment_count": 4,
+                        "share_count": 2
+                    }),
+                ],
+                imported_at: Some("2026-06-23T13:00:00Z".to_string()),
+            })
+            .expect("TikTok analytics should import");
+
+        assert_eq!(summary.account.provider, "tiktok");
+        assert_eq!(summary.audience_total, Some(1200));
+        assert_eq!(summary.imported_posts, 2);
+        assert_eq!(summary.metric_days, 2);
+
+        let report = database
+            .account_report_for_end_date(
+                summary.account.id,
+                "7_days",
+                7,
+                NaiveDate::from_ymd_opt(2026, 6, 23).expect("fixed date should be valid"),
+            )
+            .expect("TikTok report should build");
+
+        assert_eq!(report.provider, "tiktok");
+        assert_eq!(report.metrics[0].key, "views");
+        assert_eq!(report.metrics[0].value, 300);
+        assert_eq!(report.metrics[1].value, 30);
+        assert_eq!(report.metrics[2].value, 7);
+        assert_eq!(report.metrics[3].value, 3);
+        assert_eq!(report.audience.values[6], Some(1200));
 
         fs::remove_file(path).expect("temporary database should be removed");
     }
@@ -9938,6 +11930,19 @@ mod tests {
                 data: None,
             })
             .expect("authorized account should save");
+        let tiktok = database
+            .save_account(&AccountForm {
+                name: "Dust Wave TikTok".to_string(),
+                username: Some("dustwave".to_string()),
+                provider: "tiktok".to_string(),
+                provider_id: "dw-tiktok".to_string(),
+                authorized: true,
+                avatar_path: None,
+                access_token_secret_ref: "secret://accounts/tiktok/dw-tiktok/broker_connection"
+                    .to_string(),
+                data: Some(serde_json::json!({ "auth": "broker" })),
+            })
+            .expect("tiktok account should save");
         database
             .save_account(&AccountForm {
                 name: "Dust Wave X".to_string(),
@@ -9967,23 +11972,30 @@ mod tests {
             .enqueue_all_account_imports("2026-06-24T15:00:00Z")
             .expect("batch import jobs should enqueue");
 
-        assert_eq!(summary.requested_accounts, 3);
-        assert_eq!(summary.eligible_accounts, 1);
-        assert_eq!(summary.queued_jobs, 1);
+        assert_eq!(summary.requested_accounts, 4);
+        assert_eq!(summary.eligible_accounts, 2);
+        assert_eq!(summary.queued_jobs, 2);
         assert_eq!(summary.skipped_unauthorized, 1);
         assert_eq!(summary.skipped_unsupported, 1);
-        assert_eq!(
-            summary.jobs[0].idempotency_key,
-            Some(format!("import_account:{}", authorized.id))
-        );
+        let idempotency_keys = summary
+            .jobs
+            .iter()
+            .map(|job| job.idempotency_key.clone())
+            .collect::<Vec<_>>();
+        assert!(idempotency_keys.contains(&Some(format!("import_account:{}", authorized.id))));
+        assert!(idempotency_keys.contains(&Some(format!("import_account:{}", tiktok.id))));
 
         let second = database
             .enqueue_all_account_imports("2026-06-24T16:00:00Z")
             .expect("batch import jobs should remain idempotent");
 
-        assert_eq!(second.queued_jobs, 1);
-        assert_eq!(second.jobs[0].id, summary.jobs[0].id);
-        assert_eq!(second.jobs[0].run_at, "2026-06-24T16:00:00Z");
+        assert_eq!(second.queued_jobs, 2);
+        assert!(
+            second
+                .jobs
+                .iter()
+                .all(|job| job.run_at == "2026-06-24T16:00:00Z")
+        );
 
         fs::remove_file(path).expect("temporary database should be removed");
     }
@@ -10141,6 +12153,75 @@ mod tests {
             .expect_err("invalid post should not schedule");
 
         assert!(error.to_string().contains("281 characters"));
+        assert_eq!(pending_job_count(&database), 0);
+
+        fs::remove_file(path).expect("temporary database should be removed");
+    }
+
+    #[test]
+    fn validates_tiktok_direct_publishing_is_approval_gated() {
+        let path = std::env::temp_dir().join(format!(
+            "dust-wave-social-tiktok-publish-gate-test-{}.sqlite3",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+
+        let database = Database::initialize_at(&path).expect("database should initialize");
+        let account = database
+            .save_account(&AccountForm {
+                name: "Dust Wave TikTok".to_string(),
+                username: Some("dustwave".to_string()),
+                provider: "tiktok".to_string(),
+                provider_id: "dw-tiktok".to_string(),
+                authorized: true,
+                avatar_path: None,
+                access_token_secret_ref: "secret://accounts/tiktok/dw-tiktok/broker_connection"
+                    .to_string(),
+                data: Some(serde_json::json!({ "auth": "broker" })),
+            })
+            .expect("TikTok account should save");
+        let post_form = serde_json::from_value::<PostForm>(serde_json::json!({
+            "accounts": [account.id],
+            "tags": [],
+            "scheduled_at": null,
+            "versions": [
+                {
+                    "account_id": 0,
+                    "is_original": true,
+                    "content": [
+                        {
+                            "body": "Video caption",
+                            "media": []
+                        }
+                    ]
+                }
+            ]
+        }))
+        .expect("post form should deserialize");
+        let post = database
+            .create_draft_post(&post_form)
+            .expect("post should create");
+        let report = database
+            .validate_post(&post.uuid)
+            .expect("post should validate");
+
+        assert!(!report.valid);
+        assert!(report.errors.iter().any(|error| {
+            error.provider == "tiktok" && error.code == "direct_publishing_not_supported"
+        }));
+
+        let error = database
+            .schedule_post(
+                &post.uuid,
+                &SchedulePostForm {
+                    scheduled_at: "2026-06-24T15:00:00Z".to_string(),
+                },
+            )
+            .expect_err("approval-gated TikTok post should not schedule as direct publish");
+
+        assert!(error.to_string().contains("assisted publishing"));
         assert_eq!(pending_job_count(&database), 0);
 
         fs::remove_file(path).expect("temporary database should be removed");

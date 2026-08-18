@@ -14,7 +14,7 @@ The active provider parity target is X/Twitter, Facebook Page, and Mastodon. `fa
 
 ## Current Conclusion
 
-The local Dust Wave Social implementation now covers every Mixpost parity item that can be completed without live provider credentials, Apple signing/notarization, target-device runtime checks, or final human visual acceptance. Complete real-world parity still depends on the external work in `DUSTWAVE_FINISH_LINE_CHECKLIST.md`, especially provider portal setup, provider OAuth approvals, live publishing/import acceptance, signing, updater key setup, and visual QA. Dust Wave now automates the provider setup packet and account onboarding packet from the desktop app, but the provider portals and live accounts still have to be operated by a human.
+The local Dust Wave Social implementation now covers every Mixpost parity item that can be completed without live provider credentials, Apple signing/notarization, target-device runtime checks, or final human visual acceptance. Complete real-world parity still depends on the external work in `docs/MVP_LAUNCH_PLAN.md`, especially provider portal setup, provider OAuth approvals, live publishing/import acceptance, updater testing, clean-Mac install, and visual QA. Dust Wave now automates the provider setup packet and account onboarding packet from the desktop app, but the provider portals and live accounts still have to be operated by a human.
 
 Ethical product acceptance is now part of finish-line parity. The reusable standard lives in `docs/BEST_PRACTICES.md` and must be applied before shipping workflows that affect publishing, automation, account connection, credentials, imports, media, reporting, backup/restore, notifications, support exports, or provider behavior.
 

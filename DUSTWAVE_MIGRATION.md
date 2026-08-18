@@ -254,7 +254,7 @@ Status: in progress.
 - Native desktop file pickers are available for local media import while preserving manual path entry for scripted workflows.
 - OAuth start flows hand authorization URLs to the OS browser through Tauri's opener plugin, with in-panel retry buttons if browser handoff fails.
 - Tauri plugin permissions are scoped to the needed file-open dialogs, URL opening, notification, and backup/restore flows.
-- Release readiness lives in `desktop:release:*` scripts, CI, and `RELEASE.md`, not in product UI.
+- Release readiness lives in `desktop:release:*` scripts, CI, and `docs/MVP_LAUNCH_PLAN.md`, not in product UI.
 - Desktop CI runs release checks on pushes/pull requests and can build/upload unsigned macOS artifacts.
 - GitHub Releases updater scaffolding is present, with final signing keys and endpoints to be filled when release hosting is ready.
 - macOS icon variants and `.icns` are generated from the `dust-wave-square` logo.

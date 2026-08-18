@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,8 @@ const signingConfigPath = path.join(
     'src-tauri',
     'tauri.macos-signing.generated.conf.json',
 );
+const projectTargetPath = path.join(projectRoot, 'src-tauri', 'target');
+const safeTargetPath = path.join(os.homedir(), 'Library', 'Caches', 'DustWaveSocial', 'target');
 
 function run(command, commandArgs, options = {}) {
     return spawnSync(command, commandArgs, {
@@ -41,6 +43,39 @@ function run(command, commandArgs, options = {}) {
         stdio: options.stdio || 'pipe',
         env: options.env || process.env,
     });
+}
+
+async function ensureSafeDarwinTarget() {
+    if (process.platform !== 'darwin' || process.env.DUSTWAVE_RELEASE_USE_PROJECT_TARGET === 'true') {
+        return;
+    }
+
+    const parentDirectory = path.dirname(projectTargetPath);
+    let currentTarget = null;
+
+    try {
+        currentTarget = await lstat(projectTargetPath);
+    } catch {
+        currentTarget = null;
+    }
+
+    if (!currentTarget?.isSymbolicLink()) {
+        if (fileExists(projectTargetPath)) {
+            await rm(projectTargetPath, {
+                force: true,
+                maxRetries: 8,
+                recursive: true,
+                retryDelay: 250,
+            });
+        }
+
+        await mkdir(safeTargetPath, { recursive: true });
+        await mkdir(parentDirectory, { recursive: true });
+        await symlink(safeTargetPath, projectTargetPath, 'dir');
+        console.log(`Using cache-backed release target: ${redactPath(safeTargetPath)}`);
+    }
+
+    run('/usr/bin/xattr', ['-cr', safeTargetPath]);
 }
 
 function keychainList() {
@@ -302,6 +337,7 @@ let cleanupTemporaryKeychain = () => {};
 let exitCode = 0;
 
 try {
+    await ensureSafeDarwinTarget();
     cleanupTemporaryKeychain = await prepareTemporarySigningKeychain();
     await importDeveloperIdCertificateIfNeeded();
 

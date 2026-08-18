@@ -103,6 +103,16 @@ const SERVICE_CREDENTIALS: &[ServiceCredentialDefinition] = &[
         ],
     },
     ServiceCredentialDefinition {
+        service: "tiktok",
+        label: "TikTok",
+        group: "social",
+        fields: &[ServiceCredentialFieldDefinition {
+            field: CLIENT_ID,
+            label: "Client Key",
+            env_vars: &["DUSTWAVE_TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_KEY"],
+        }],
+    },
+    ServiceCredentialDefinition {
         service: "unsplash",
         label: "Unsplash",
         group: "media",
@@ -125,6 +135,16 @@ const SERVICE_CREDENTIALS: &[ServiceCredentialDefinition] = &[
                 "KLIPY_CLIENT_ID",
                 "KLIPY_API_KEY",
             ],
+        }],
+    },
+    ServiceCredentialDefinition {
+        service: "media_staging",
+        label: "Media Staging",
+        group: "media",
+        fields: &[ServiceCredentialFieldDefinition {
+            field: CLIENT_SECRET,
+            label: "Staging Token",
+            env_vars: &["DUSTWAVE_MEDIA_STAGING_TOKEN", "MEDIA_STAGING_TOKEN"],
         }],
     },
 ];

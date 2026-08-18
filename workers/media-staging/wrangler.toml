@@ -1,0 +1,16 @@
+name = "dustwave-media-staging"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+workers_dev = true
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+MAX_OBJECT_BYTES = "26214400"
+DEFAULT_TTL_SECONDS = "86400"
+PUBLIC_MEDIA_BASE_URL = "https://dustwave-media-staging.jogo.workers.dev"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "dustwave-media-staging"

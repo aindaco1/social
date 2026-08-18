@@ -1,0 +1,136 @@
+name: Media Staging
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      deploy_media_staging:
+        description: Deploy the Cloudflare R2 media staging Worker
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+jobs:
+  media-staging-check:
+    name: Media staging tests and dry run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run media staging tests
+        run: npm run media:staging:test
+
+      - name: Validate Wrangler bundle when bucket is configured
+        env:
+          MEDIA_STAGING_WORKER_NAME: ${{ vars.MEDIA_STAGING_WORKER_NAME }}
+          MEDIA_STAGING_BUCKET_NAME: ${{ vars.MEDIA_STAGING_BUCKET_NAME }}
+          PUBLIC_MEDIA_BASE_URL: ${{ vars.PUBLIC_MEDIA_BASE_URL }}
+          MEDIA_STAGING_MAX_OBJECT_BYTES: ${{ vars.MEDIA_STAGING_MAX_OBJECT_BYTES }}
+          MEDIA_STAGING_DEFAULT_TTL_SECONDS: ${{ vars.MEDIA_STAGING_DEFAULT_TTL_SECONDS }}
+          MEDIA_STAGING_CLEANUP_CRON: ${{ vars.MEDIA_STAGING_CLEANUP_CRON }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${MEDIA_STAGING_BUCKET_NAME:-}" ]]; then
+            echo "Skipping Wrangler dry run because MEDIA_STAGING_BUCKET_NAME is not configured."
+            exit 0
+          fi
+
+          npm run media:staging:wrangler:check
+
+  media-staging-deploy:
+    name: Deploy media staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_media_staging == 'true'
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Cloudflare deploy credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing Cloudflare deployment setting(s): %s\n' "${missing[*]}" >&2
+            printf 'CLOUDFLARE_API_TOKEN must allow Workers deploys and R2 bindings for this account.\n' >&2
+            exit 1
+          fi
+
+      - name: Prepare media staging secret file
+        env:
+          MEDIA_STAGING_TOKEN: ${{ secrets.MEDIA_STAGING_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${MEDIA_STAGING_TOKEN:-}" ]]; then
+            printf 'Missing media staging Worker secret: MEDIA_STAGING_TOKEN\n' >&2
+            exit 1
+          fi
+
+          secrets_file="$RUNNER_TEMP/media-staging-secrets.env"
+          printf 'MEDIA_STAGING_TOKEN=%s\n' "$MEDIA_STAGING_TOKEN" > "$secrets_file"
+          chmod 600 "$secrets_file"
+          echo "MEDIA_STAGING_SECRETS_FILE=$secrets_file" >> "$GITHUB_ENV"
+
+      - name: Prepare media staging config
+        env:
+          MEDIA_STAGING_WORKER_NAME: ${{ vars.MEDIA_STAGING_WORKER_NAME }}
+          MEDIA_STAGING_BUCKET_NAME: ${{ vars.MEDIA_STAGING_BUCKET_NAME }}
+          PUBLIC_MEDIA_BASE_URL: ${{ vars.PUBLIC_MEDIA_BASE_URL }}
+          MEDIA_STAGING_MAX_OBJECT_BYTES: ${{ vars.MEDIA_STAGING_MAX_OBJECT_BYTES }}
+          MEDIA_STAGING_DEFAULT_TTL_SECONDS: ${{ vars.MEDIA_STAGING_DEFAULT_TTL_SECONDS }}
+          MEDIA_STAGING_CLEANUP_CRON: ${{ vars.MEDIA_STAGING_CLEANUP_CRON }}
+        run: npm run media:staging:config:check
+
+      - name: Deploy media staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx wrangler deploy \
+            --config workers/media-staging/wrangler.generated.jsonc \
+            --secrets-file "$MEDIA_STAGING_SECRETS_FILE" \
+            --keep-vars

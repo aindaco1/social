@@ -52,6 +52,8 @@ Run this review before shipping new publishing, automation, account, analytics, 
 - Do not treat automated provider decisions as automatically correct. Surface provider errors, rate limits, and rejected media rules with enough context for human review.
 - Any future AI-assisted writing, media selection, recommendations, scoring, or moderation must disclose that automation is involved and require a separate risk review.
 - If analytics summaries or recommendations are added, document inputs, exclusions, and known limitations.
+- If local AI media enhancement is added, keep it opt-in, preserve the original media, label derivative files with model/source metadata, avoid hidden cloud fallback, and make review explicit before publishing enhanced assets.
+- Treat generated alt text, semantic search labels, crop suggestions, and quality warnings as operator aids, not final authority. Keep generated outputs editable, reviewable, and removable.
 
 ### Surveillance And Sensitive Data
 

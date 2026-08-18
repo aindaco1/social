@@ -53,6 +53,13 @@ if (!apps.length) {
 }
 
 for (const appPath of apps) {
+    const clearAttributes = run('/usr/bin/xattr', ['-cr', appPath]);
+
+    if (clearAttributes.status !== 0) {
+        console.error(clearAttributes.stderr || clearAttributes.stdout || `Failed to clear extended attributes from ${appPath}`);
+        process.exit(clearAttributes.status || 1);
+    }
+
     const sign = run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appPath]);
 
     if (sign.status !== 0) {

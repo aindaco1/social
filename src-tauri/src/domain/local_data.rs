@@ -1,3 +1,4 @@
+use super::provider::ProviderCapability;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -10,6 +11,7 @@ pub struct LocalDataSnapshot {
     pub tags: Vec<TagSummary>,
     pub jobs: Vec<JobSummary>,
     pub rate_limits: Vec<RateLimitSummary>,
+    pub provider_capabilities: Vec<ProviderCapability>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -289,10 +291,23 @@ pub struct FacebookPageCandidate {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct InstagramAccountCandidate {
+    pub id: String,
+    pub name: String,
+    pub username: Option<String>,
+    pub avatar_path: Option<String>,
+    pub page_id: String,
+    pub page_name: String,
+    #[serde(skip_serializing)]
+    pub access_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct FacebookUserConnectionSummary {
     pub user_id: String,
     pub user_name: String,
     pub pages: Vec<FacebookPageCandidate>,
+    pub instagram_accounts: Vec<InstagramAccountCandidate>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -308,11 +323,67 @@ pub struct FacebookPageConnectionSummary {
     pub accounts: Vec<AccountSummary>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct InstagramAccountConnectForm {
+    pub user_id: String,
+    pub instagram_ids: Vec<String>,
+    #[serde(default)]
+    pub api_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstagramAccountConnectionSummary {
+    pub accounts: Vec<AccountSummary>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct FacebookImportSummary {
     pub account: AccountSummary,
     pub audience_total: Option<i64>,
     pub insight_rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstagramImportSummary {
+    pub account: AccountSummary,
+    pub audience_total: Option<i64>,
+    pub imported_posts: usize,
+    pub metric_days: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TikTokImportSummary {
+    pub account: AccountSummary,
+    pub audience_total: Option<i64>,
+    pub imported_posts: usize,
+    pub metric_days: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TikTokBrokerConnectionForm {
+    pub provider_id: String,
+    pub name: String,
+    pub username: Option<String>,
+    pub avatar_path: Option<String>,
+    pub broker_connection: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TikTokAccountConnection {
+    pub account: AccountSummary,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TikTokAnalyticsImportForm {
+    pub account: AccountForm,
+    #[serde(default)]
+    pub user: Option<Value>,
+    #[serde(default)]
+    pub videos: Vec<Value>,
+    #[serde(default)]
+    pub imported_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -600,6 +671,72 @@ pub struct MediaSummary {
     pub conversion_count: usize,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalAiMediaWarning {
+    pub code: String,
+    pub severity: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalAiMediaPreflightSummary {
+    pub media: MediaSummary,
+    pub runtime: String,
+    pub warnings: Vec<LocalAiMediaWarning>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalAiModelUpscaleDerivativeForm {
+    pub uuid: String,
+    pub image_data_url: String,
+    pub scale_factor: u8,
+    pub model_id: String,
+    pub model_name: String,
+    pub model_version: String,
+    pub model_license: String,
+    pub model_source_url: String,
+    pub model_license_url: String,
+    pub model_precision: String,
+    pub accelerator: String,
+    pub tile_size: u32,
+    pub input_width: u32,
+    pub input_height: u32,
+    pub original_width: u32,
+    pub original_height: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalAiMediaDerivativeSummary {
+    pub source: MediaSummary,
+    pub derivative: MediaSummary,
+    pub operation: String,
+    pub runtime: String,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalAiMediaSearchMatch {
+    pub media: MediaLibraryItem,
+    pub score: i64,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalAiMediaSearchSummary {
+    pub query: String,
+    pub runtime: String,
+    pub matches: Vec<LocalAiMediaSearchMatch>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalAiAltTextDraftSummary {
+    pub media: MediaSummary,
+    pub alt_text: String,
+    pub runtime: String,
+    pub metadata: Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1044,6 +1181,22 @@ fn validate_service_configuration(name: &str, configuration: Option<&Value>) -> 
         if let Some(api_version) = object.get("api_version").and_then(Value::as_str) {
             if !looks_like_facebook_api_version(api_version) {
                 return Err("facebook api_version is invalid".to_string());
+            }
+        }
+    }
+
+    if name == "tiktok" {
+        if let Some(mode) = object.get("publishing_mode").and_then(Value::as_str) {
+            if !matches!(mode, "assisted" | "send_to_tiktok" | "direct") {
+                return Err("tiktok publishing_mode is invalid".to_string());
+            }
+        }
+
+        if let Some(url) = object.get("broker_base_url").and_then(Value::as_str) {
+            let url = url.trim();
+
+            if !url.is_empty() && !url.starts_with("https://") {
+                return Err("tiktok broker_base_url must be an HTTPS URL".to_string());
             }
         }
     }
@@ -1955,6 +2108,41 @@ mod tests {
         .validated()
         .expect_err("bad facebook version should fail");
         assert_eq!(error, "facebook api_version is invalid");
+
+        let error = ServiceForm {
+            name: "tiktok".to_string(),
+            configuration_secret_ref: "secret://services/tiktok".to_string(),
+            configuration: Some(serde_json::json!({ "publishing_mode": "automatic" })),
+            active: true,
+        }
+        .validated()
+        .expect_err("bad tiktok publishing mode should fail");
+        assert_eq!(error, "tiktok publishing_mode is invalid");
+
+        let error = ServiceForm {
+            name: "tiktok".to_string(),
+            configuration_secret_ref: "secret://services/tiktok".to_string(),
+            configuration: Some(serde_json::json!({
+                "broker_base_url": "http://broker.example",
+                "publishing_mode": "assisted"
+            })),
+            active: true,
+        }
+        .validated()
+        .expect_err("non-https tiktok broker url should fail");
+        assert_eq!(error, "tiktok broker_base_url must be an HTTPS URL");
+
+        ServiceForm {
+            name: "tiktok".to_string(),
+            configuration_secret_ref: "secret://services/tiktok".to_string(),
+            configuration: Some(serde_json::json!({
+                "broker_base_url": "https://broker.example",
+                "publishing_mode": "assisted"
+            })),
+            active: true,
+        }
+        .validated()
+        .expect("valid tiktok broker settings should pass");
     }
 
     #[test]

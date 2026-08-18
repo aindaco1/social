@@ -14,8 +14,7 @@ This repository also contains the Dust Wave Social Tauri/Rust desktop migration 
 
 - [Migration plan](DUSTWAVE_MIGRATION.md)
 - [Mixpost parity audit](MIXPOST_PARITY_AUDIT.md)
-- [Finish-line checklist](DUSTWAVE_FINISH_LINE_CHECKLIST.md)
-- [Release checklist](RELEASE.md)
+- [Canonical MVP launch plan](docs/MVP_LAUNCH_PLAN.md)
 - [Product and ethical best practices](docs/BEST_PRACTICES.md)
 - [Support runbook](docs/SUPPORT_RUNBOOK.md)
 - [Security policy](SECURITY.md)

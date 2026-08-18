@@ -173,44 +173,24 @@ const providerReportDefinitions = {
         { key: 'page_post_engagements', label: 'Post Engagements', description: 'The number of times people engaged with your posts through reactions, comments, shares, and more' },
         { key: 'page_posts_impressions', label: 'Posts Impressions', description: "The number of times your Page's posts entered a person screen" },
     ],
+    instagram: [
+        { key: 'likes', label: 'Likes', description: 'The number of likes on your Instagram media' },
+        { key: 'comments', label: 'Comments', description: 'The number of comments on your Instagram media' },
+        { key: 'media', label: 'Media', description: 'The number of imported Instagram media items' },
+    ],
     mastodon: [
         { key: 'replies', label: 'Replies', description: 'The number of replies to your posts' },
         { key: 'reblogs', label: 'Reblogs', description: 'The number of times your posts have been reblogged' },
         { key: 'favourites', label: 'Favourites', description: 'The number of times your posts have been added to favourites' },
     ],
+    tiktok: [
+        { key: 'views', label: 'Views', description: 'The number of times your videos were viewed' },
+        { key: 'likes', label: 'Likes', description: 'The number of likes on your videos' },
+        { key: 'comments', label: 'Comments', description: 'The number of comments on your videos' },
+        { key: 'shares', label: 'Shares', description: 'The number of times your videos were shared' },
+    ],
 };
-const providerPostRules = {
-    twitter: {
-        simultaneous_posting: false,
-        max_text_chars: 280,
-        max_media: {
-            photos: 4,
-            videos: 1,
-            gifs: 1,
-            allow_mixing: false,
-        },
-    },
-    facebook: {
-        simultaneous_posting: true,
-        max_text_chars: 5000,
-        max_media: {
-            photos: 10,
-            videos: 1,
-            gifs: 1,
-            allow_mixing: false,
-        },
-    },
-    mastodon: {
-        simultaneous_posting: true,
-        max_text_chars: 500,
-        max_media: {
-            photos: 4,
-            videos: 1,
-            gifs: 1,
-            allow_mixing: false,
-        },
-    },
-};
+const dustWaveTikTokBrokerUrl = 'https://dustwave-tiktok-broker.jogo.workers.dev';
 const serviceDefinitions = [
     {
         id: 'facebook',
@@ -233,6 +213,31 @@ const serviceDefinitions = [
                 label: 'API Version',
                 defaultValue: 'v25.0',
                 options: ['v25.0', 'v24.0', 'v23.0', 'v22.0', 'v21.0', 'v20.0', 'v19.0', 'v18.0', 'v17.0', 'v16.0'],
+            },
+        ],
+    },
+    {
+        id: 'media_staging',
+        label: 'Media Staging',
+        description: 'Store the Cloudflare R2 Worker URL and token used to publish temporary local media URLs for providers such as Instagram.',
+        docsUrl: 'https://developers.cloudflare.com/r2/api/workers/workers-api-usage/',
+        setupUrl: 'https://dash.cloudflare.com/',
+        configurationSecretRef: 'secret://services/media_staging',
+        setupFields: [
+            { key: 'worker', label: 'Worker', value: 'dustwave-media-staging' },
+            { key: 'bucket', label: 'R2 bucket', value: 'dustwave-media-staging' },
+            { key: 'retention', label: 'Retention', value: 'Temporary high-entropy URLs with 24 hour default TTL' },
+        ],
+        credentials: [
+            { field: 'client_secret', label: 'Staging Token', autocomplete: 'new-password', secret: true },
+        ],
+        configuration: [
+            {
+                field: 'base_url',
+                label: 'Base URL',
+                defaultValue: 'https://dustwave-media-staging.jogo.workers.dev',
+                input: 'text',
+                placeholder: 'https://dustwave-media-staging.jogo.workers.dev',
             },
         ],
     },
@@ -261,6 +266,42 @@ const serviceDefinitions = [
                     { value: 'legacy', label: 'Legacy' },
                     { value: 'free', label: 'Free' },
                     { value: 'basic', label: 'Basic' },
+                ],
+            },
+        ],
+    },
+    {
+        id: 'tiktok',
+        label: 'TikTok',
+        description: 'Store the TikTok client key and broker settings used for assisted publishing, API-gated publishing modes, imports, and reports.',
+        docsUrl: 'https://developers.tiktok.com/doc/overview/',
+        setupUrl: 'https://developers.tiktok.com/',
+        configurationSecretRef: 'secret://services/tiktok',
+        setupFields: [
+            { key: 'redirect', label: 'Broker OAuth callback URL', value: `${dustWaveTikTokBrokerUrl}/api/tiktok/oauth/callback` },
+            { key: 'scopes', label: 'MVP analytics scopes', value: 'user.info.basic,user.info.stats,video.list' },
+            { key: 'publishing_scopes', label: 'Future publishing scopes', value: 'video.upload,video.publish' },
+            { key: 'secret', label: 'Client secret storage', value: 'Store TikTok client secret only in the Cloudflare broker, never in this desktop app.' },
+        ],
+        credentials: [
+            { field: 'client_id', label: 'Client Key', autocomplete: 'off' },
+        ],
+        configuration: [
+            {
+                field: 'broker_base_url',
+                label: 'Broker URL',
+                defaultValue: dustWaveTikTokBrokerUrl,
+                input: 'text',
+                placeholder: dustWaveTikTokBrokerUrl,
+            },
+            {
+                field: 'publishing_mode',
+                label: 'Publishing Mode',
+                defaultValue: 'assisted',
+                options: [
+                    { value: 'assisted', label: 'Assisted' },
+                    { value: 'send_to_tiktok', label: 'Send to TikTok' },
+                    { value: 'direct', label: 'Direct API' },
                 ],
             },
         ],
@@ -327,6 +368,7 @@ const settingsDraft = ref({
     desktop_notifications: true,
     operator_name: '',
     admin_email: '',
+    local_ai_media_labs: false,
     default_accounts: [],
 });
 const report = ref(null);
@@ -390,6 +432,10 @@ const snapshot = ref({
     tags: [],
     jobs: [],
     rate_limits: [],
+    provider_capabilities: [],
+});
+const providerCapabilityMap = computed(() => {
+    return new Map((snapshot.value.provider_capabilities || []).map((capability) => [capability.id, capability]));
 });
 const mediaLibrary = ref([]);
 const mediaLibraryLoading = ref(false);
@@ -455,6 +501,7 @@ const facebookOAuthDraft = ref({
     redirect_uri: 'http://localhost/callback',
     code: '',
     selected_pages: [],
+    selected_instagram_accounts: [],
 });
 const mastodonAppDraft = ref({
     server: '',
@@ -466,6 +513,14 @@ const mastodonOAuthDraft = ref({
     server: '',
     code: '',
     redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
+});
+const tiktokConnectionDraft = ref({
+    provider_id: '',
+    name: '',
+    username: '',
+    avatar_path: '',
+    broker_connection: '',
+    scopes: 'user.info.basic,user.info.stats,video.list',
 });
 const mediaImport = ref({
     source_path: '',
@@ -500,12 +555,16 @@ const facebookOAuthError = ref('');
 const facebookOAuthStart = ref(null);
 const facebookUserConnection = ref(null);
 const facebookPageConnection = ref(null);
+const instagramAccountConnection = ref(null);
 const mastodonAppSaving = ref(false);
 const mastodonAppError = ref('');
 const mastodonAppRegistration = ref(null);
 const mastodonOAuthSaving = ref(false);
 const mastodonOAuthError = ref('');
 const mastodonOAuthConnection = ref(null);
+const tiktokConnectionSaving = ref(false);
+const tiktokConnectionError = ref('');
+const tiktokConnection = ref(null);
 const addAccountModalOpen = ref(false);
 const accountSaving = ref(false);
 const accountError = ref('');
@@ -517,6 +576,8 @@ const queueAllImportsRunning = ref(false);
 const mastodonImportSummary = ref(null);
 const twitterImportSummary = ref(null);
 const facebookImportSummary = ref(null);
+const instagramImportSummary = ref(null);
+const tiktokImportSummary = ref(null);
 const queuedImportJob = ref(null);
 const queuedImportBatch = ref(null);
 const queuedImportError = ref('');
@@ -526,6 +587,26 @@ const mediaProgress = ref('');
 const mediaImportResults = ref([]);
 const mediaCleanup = ref(null);
 const mediaDropActive = ref(false);
+const localAiRuntime = ref({
+    status: 'not_checked',
+    accelerator: 'unknown',
+    webgpu: false,
+    wasm: false,
+    models: 0,
+    compiled_model: '',
+    detail: 'Not checked',
+});
+const localAiBusy = ref(false);
+const localAiError = ref('');
+const localAiResult = ref(null);
+const localAiSearchQuery = ref('');
+const localAiSearchResults = ref(null);
+const localAiCropRatio = ref('square');
+let localAiLiteRtLoaded = false;
+let localAiAbortController = null;
+const LOCAL_AI_UPSCALE_TILE_SIZE = 128;
+const LOCAL_AI_UPSCALE_SCALE_FACTOR = 4;
+const LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE = 512;
 const draftBody = ref('');
 const draftAccountIds = ref([]);
 const draftAccountBodies = ref({});
@@ -730,12 +811,7 @@ const configuredCredentialCount = computed(() => {
 });
 
 const activeCredentialCount = computed(() => {
-    return serviceDefinitions.filter((service) => {
-        const status = credentialStatuses.value.find((item) => item.service === service.id);
-        const record = snapshot.value.services.find((item) => item.name === service.id);
-
-        return Boolean(status?.configured && (status?.active ?? record?.active));
-    }).length;
+    return serviceDefinitions.filter((service) => serviceReady(service.id)).length;
 });
 
 const serviceReadinessSummary = computed(() => {
@@ -759,7 +835,7 @@ const activeServiceConfiguredFields = computed(() => {
 });
 
 const activeServiceIsReady = computed(() => {
-    return Boolean(activeServiceStatus.value?.configured && serviceActiveValue(activeServiceTab.value));
+    return serviceReady(activeServiceTab.value);
 });
 
 const systemLogEntryCount = computed(() => {
@@ -1034,7 +1110,7 @@ const selectedDraftProviderCounts = computed(() => {
 const draftProviderWarnings = computed(() => {
     return Object.entries(selectedDraftProviderCounts.value)
         .filter(([provider, count]) => {
-            return count > 1 && providerPostRules[provider]?.simultaneous_posting === false;
+            return count > 1 && providerPostRule(provider)?.simultaneous_posting === false;
         })
         .map(([provider]) => {
             return `${providerDisplayName(provider)} does not allow simultaneous posting to multiple accounts. Create a separate post for the extra account.`;
@@ -1169,10 +1245,15 @@ const draftValidationMessages = computed(() => {
 
     selectedDraftAccounts.value.forEach((account) => {
         const provider = providerKey(account.provider);
-        const rule = providerPostRules[provider];
+        const capability = providerCapability(provider);
+        const rule = capability?.post_config;
 
         if (!rule) {
             return;
+        }
+
+        if (capability.supports_publish === false) {
+            messages.push(`${providerDisplayName(account.provider)} uses assisted publishing or requires approved direct API publishing before scheduling.`);
         }
 
         const text = editorBodyText(draftAccountBodies.value[account.id] ?? draftBody.value).trim();
@@ -1404,9 +1485,16 @@ const availableDraftTags = computed(() => {
     });
 });
 
-const importableProviders = new Set(['mastodon', 'twitter', 'facebook_page']);
+const importableProviders = computed(() => {
+    return new Set((snapshot.value.provider_capabilities || [])
+        .filter((capability) => capability.supports_audience_import || capability.supports_metrics_import)
+        .map((capability) => capability.id));
+});
+const accountImportSupported = (account) => {
+    return importableProviders.value.has(providerKey(account.provider));
+};
 const connectedImportAccountCount = computed(() => {
-    return snapshot.value.accounts.filter((account) => account.authorized && importableProviders.has(account.provider)).length;
+    return snapshot.value.accounts.filter((account) => account.authorized && accountImportSupported(account)).length;
 });
 
 const navigationBadge = (id) => {
@@ -1477,6 +1565,14 @@ const mediaThumbnailUrl = (item) => {
     return item?.thumb_url || item?.url || '';
 };
 
+const localAiLabsEnabled = computed(() => {
+    return Boolean(settings.value?.local_ai_media_labs || settingsDraft.value.local_ai_media_labs);
+});
+
+const localAiStaticImage = (item) => {
+    return String(item?.mime_type || '').startsWith('image/') && item?.mime_type !== 'image/gif';
+};
+
 const fileNameFromPath = (path) => {
     return String(path || '').split(/[\\/]/).filter(Boolean).pop() || String(path || 'Media file');
 };
@@ -1484,12 +1580,20 @@ const fileNameFromPath = (path) => {
 const providerKey = (provider) => {
     const key = String(provider || '').toLowerCase();
 
+    if (key.includes('instagram')) {
+        return 'instagram';
+    }
+
     if (key.includes('facebook')) {
-        return 'facebook';
+        return 'facebook_page';
     }
 
     if (key.includes('mastodon')) {
         return 'mastodon';
+    }
+
+    if (key.includes('tiktok')) {
+        return 'tiktok';
     }
 
     if (key.includes('twitter') || key === 'x') {
@@ -1499,11 +1603,28 @@ const providerKey = (provider) => {
     return 'original';
 };
 
+const providerCapability = (provider) => {
+    return providerCapabilityMap.value.get(providerKey(provider)) || null;
+};
+
+const providerPostRule = (provider) => {
+    return providerCapability(provider)?.post_config || null;
+};
+
 const providerDisplayName = (provider) => {
     const key = providerKey(provider);
+    const capability = providerCapabilityMap.value.get(key);
 
-    if (key === 'facebook') {
-        return 'Facebook';
+    if (capability?.display_name) {
+        return capability.display_name;
+    }
+
+    if (key === 'facebook_page') {
+        return 'Facebook Page';
+    }
+
+    if (key === 'instagram') {
+        return 'Instagram';
     }
 
     if (key === 'mastodon') {
@@ -1514,13 +1635,15 @@ const providerDisplayName = (provider) => {
         return 'X';
     }
 
+    if (key === 'tiktok') {
+        return 'TikTok';
+    }
+
     return 'Original';
 };
 
 const providerCharacterLimit = (provider) => {
-    const key = providerKey(provider);
-
-    return providerPostRules[key]?.max_text_chars || null;
+    return providerPostRule(provider)?.max_text_chars || null;
 };
 
 const previewCharacterLabel = (preview) => {
@@ -1539,7 +1662,7 @@ const previewOverLimit = (preview) => {
 const previewHandle = (account) => {
     const username = account.username || account.name || '';
 
-    if (!username || providerKey(account.provider) === 'facebook') {
+    if (!username || providerKey(account.provider) === 'facebook_page') {
         return providerDisplayName(account.provider);
     }
 
@@ -1576,7 +1699,9 @@ const accountOnboardingTemplateText = () => {
         ['provider', 'display_name', 'handle_or_page_id', 'owner', 'posting_allowed', 'import_history', 'notes'],
         ['twitter', '', '', '', 'yes', 'yes', ''],
         ['facebook_page', '', '', '', 'yes', 'yes', ''],
+        ['instagram', '', '', '', 'yes', 'yes', 'Use Facebook OAuth, then choose connected Instagram accounts.'],
         ['mastodon', '', '', '', 'yes', 'yes', ''],
+        ['tiktok', '', '', '', 'assisted', 'yes', 'Requires broker-issued connection credential for analytics.'],
     ];
 
     return rows.map(csvRow).join('\n');
@@ -1591,7 +1716,7 @@ const connectedAccountInventoryText = () => {
             previewHandle(account) || account.username || '',
             account.provider_id || '',
             account.authorized ? 'yes' : 'no',
-            importableProviders.has(account.provider) ? 'yes' : 'no',
+            accountImportSupported(account) ? 'yes' : 'no',
             account.uuid,
         ]),
     ];
@@ -1605,7 +1730,7 @@ const accountOnboardingPlanText = () => {
 
         return counts;
     }, {});
-    const providerSummary = ['twitter', 'facebook_page', 'mastodon']
+    const providerSummary = ['twitter', 'facebook_page', 'instagram', 'mastodon', 'tiktok']
         .map((provider) => `${provider}: ${providerCounts[provider] || 0}`)
         .join(', ');
     const readyServices = serviceDefinitions
@@ -1710,7 +1835,7 @@ const draftAccountDisabledReason = (account) => {
     }
 
     const provider = providerKey(account.provider);
-    const rule = providerPostRules[provider];
+    const rule = providerPostRule(provider);
 
     if (rule && !rule.simultaneous_posting && (selectedDraftProviderCounts.value[provider] || 0) > 0) {
         return `${providerDisplayName(account.provider)} does not allow simultaneous posting to multiple accounts.`;
@@ -2268,6 +2393,467 @@ const searchNextExternalMediaPage = () => {
     searchExternalMedia(externalMediaResults.value?.next_page || externalMediaSearch.value.page + 1);
 };
 
+const localAiCancelError = () => {
+    const error = new Error('Local AI operation canceled');
+    error.name = 'AbortError';
+    return error;
+};
+
+const throwIfLocalAiCanceled = (signal) => {
+    if (signal?.aborted) {
+        throw localAiCancelError();
+    }
+};
+
+const ensureLocalAiLiteRt = async () => {
+    const litert = await import('@litertjs/core');
+
+    if (!localAiLiteRtLoaded) {
+        await litert.loadLiteRt('./litert/wasm/');
+        localAiLiteRtLoaded = true;
+    }
+
+    return litert;
+};
+
+const localAiModelShapeValue = (shape, index, fallback) => {
+    const value = Number(Array.isArray(shape) ? shape[index] : fallback);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const loadLocalAiUpscalingBundle = async () => {
+    const manifestResponse = await fetch('./litert/models/manifest.json', { cache: 'no-store' });
+
+    if (!manifestResponse.ok) {
+        throw new Error(`Local AI model manifest unavailable (${manifestResponse.status})`);
+    }
+
+    const manifest = await manifestResponse.json();
+    const models = Array.isArray(manifest?.models) ? manifest.models : [];
+    const upscalingModel = models.find((model) => model.feature === 'image_upscaling' && model.runtime === 'litert');
+    const modelFile = upscalingModel?.files?.find((file) => file.kind === 'model');
+
+    if (!upscalingModel || !modelFile?.path) {
+        throw new Error('Local AI upscaling model is not listed in the bundled manifest');
+    }
+
+    const inputShape = upscalingModel.inputs?.image?.shape || [1, LOCAL_AI_UPSCALE_TILE_SIZE, LOCAL_AI_UPSCALE_TILE_SIZE, 3];
+    const outputShape = upscalingModel.outputs?.upscaled_image?.shape || [
+        1,
+        LOCAL_AI_UPSCALE_TILE_SIZE * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        LOCAL_AI_UPSCALE_TILE_SIZE * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        3,
+    ];
+    const inputTileSize = localAiModelShapeValue(inputShape, 1, LOCAL_AI_UPSCALE_TILE_SIZE);
+    const outputTileSize = localAiModelShapeValue(outputShape, 1, inputTileSize * LOCAL_AI_UPSCALE_SCALE_FACTOR);
+    const modelScaleFactor = outputTileSize / inputTileSize;
+
+    if (inputTileSize !== LOCAL_AI_UPSCALE_TILE_SIZE || modelScaleFactor !== LOCAL_AI_UPSCALE_SCALE_FACTOR) {
+        throw new Error('Bundled Local AI upscaling model must use 128px input tiles and x4 output');
+    }
+
+    return {
+        manifest,
+        models,
+        upscalingModel,
+        modelFile,
+        inputShape,
+        outputShape,
+        inputTileSize,
+        outputTileSize,
+        modelScaleFactor,
+    };
+};
+
+const compileLocalAiUpscalingModel = async () => {
+    const webgpu = Boolean(navigator.gpu);
+    const bundle = await loadLocalAiUpscalingBundle();
+    const { loadAndCompile, Tensor } = await ensureLocalAiLiteRt();
+    const compiledModel = await loadAndCompile(`./litert/models/${bundle.modelFile.path}`, {
+        accelerator: webgpu ? ['webgpu', 'wasm'] : 'wasm',
+    });
+    const accelerator = webgpu ? (compiledModel.isFullyAccelerated ? 'webgpu' : 'wasm_fallback') : 'wasm';
+
+    return {
+        ...bundle,
+        Tensor,
+        compiledModel,
+        webgpu,
+        accelerator,
+    };
+};
+
+const createLocalAiCanvas = (width, height) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width));
+    canvas.height = Math.max(1, Math.round(height));
+    return canvas;
+};
+
+const localAiCanvasContext = (canvas) => {
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+
+    if (!context) {
+        throw new Error('Local AI canvas context unavailable');
+    }
+
+    return context;
+};
+
+const loadLocalAiImage = async (url) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Local AI source image could not be loaded'));
+    image.src = url;
+});
+
+const prepareLocalAiSourceCanvas = async (item) => {
+    const sourceUrl = mediaAssetUrl(item?.url || item?.thumb_url || '');
+
+    if (!sourceUrl) {
+        throw new Error('Local AI source image URL is unavailable');
+    }
+
+    const image = await loadLocalAiImage(sourceUrl);
+    const originalWidth = image.naturalWidth || image.width;
+    const originalHeight = image.naturalHeight || image.height;
+
+    if (!originalWidth || !originalHeight) {
+        throw new Error('Local AI source image dimensions are unavailable');
+    }
+
+    const processingScale = Math.min(1, LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE / Math.max(originalWidth, originalHeight));
+    const processingWidth = Math.max(1, Math.round(originalWidth * processingScale));
+    const processingHeight = Math.max(1, Math.round(originalHeight * processingScale));
+    const canvas = createLocalAiCanvas(processingWidth, processingHeight);
+    const context = localAiCanvasContext(canvas);
+    context.drawImage(image, 0, 0, processingWidth, processingHeight);
+
+    return {
+        canvas,
+        context,
+        originalWidth,
+        originalHeight,
+        processingWidth,
+        processingHeight,
+    };
+};
+
+const localAiTileInput = (sourceContext, tileX, tileY, cropWidth, cropHeight) => {
+    const pixels = sourceContext.getImageData(tileX, tileY, cropWidth, cropHeight).data;
+    const input = new Uint8Array(LOCAL_AI_UPSCALE_TILE_SIZE * LOCAL_AI_UPSCALE_TILE_SIZE * 3);
+
+    for (let y = 0; y < LOCAL_AI_UPSCALE_TILE_SIZE; y += 1) {
+        const sourceY = Math.min(y, cropHeight - 1);
+
+        for (let x = 0; x < LOCAL_AI_UPSCALE_TILE_SIZE; x += 1) {
+            const sourceX = Math.min(x, cropWidth - 1);
+            const sourceIndex = (sourceY * cropWidth + sourceX) * 4;
+            const inputIndex = (y * LOCAL_AI_UPSCALE_TILE_SIZE + x) * 3;
+            input[inputIndex] = pixels[sourceIndex];
+            input[inputIndex + 1] = pixels[sourceIndex + 1];
+            input[inputIndex + 2] = pixels[sourceIndex + 2];
+        }
+    }
+
+    return input;
+};
+
+const localAiModelByte = (value) => {
+    const scaled = value >= 0 && value <= 1 ? value * 255 : value;
+    return Math.max(0, Math.min(255, Math.round(scaled)));
+};
+
+const drawLocalAiUpscaleTile = (targetContext, outputData, tileX, tileY, cropWidth, cropHeight, outputTileSize) => {
+    const tileCanvas = createLocalAiCanvas(outputTileSize, outputTileSize);
+    const tileContext = localAiCanvasContext(tileCanvas);
+    const imageData = tileContext.createImageData(outputTileSize, outputTileSize);
+
+    for (let outputIndex = 0, rgbaIndex = 0; outputIndex < outputData.length; outputIndex += 3, rgbaIndex += 4) {
+        imageData.data[rgbaIndex] = localAiModelByte(outputData[outputIndex]);
+        imageData.data[rgbaIndex + 1] = localAiModelByte(outputData[outputIndex + 1]);
+        imageData.data[rgbaIndex + 2] = localAiModelByte(outputData[outputIndex + 2]);
+        imageData.data[rgbaIndex + 3] = 255;
+    }
+
+    tileContext.putImageData(imageData, 0, 0);
+    targetContext.drawImage(
+        tileCanvas,
+        0,
+        0,
+        cropWidth * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        cropHeight * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tileX * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tileY * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        cropWidth * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        cropHeight * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+    );
+};
+
+const runLocalAiUpscaleTile = async (compiledModel, Tensor, inputBytes, inputShape) => {
+    let inputTensor = null;
+    let outputTensor = null;
+    let cpuOutputTensor = null;
+    let outputs = null;
+
+    try {
+        inputTensor = new Tensor(inputBytes, inputShape);
+        outputs = await compiledModel.run(inputTensor);
+        const outputList = Array.isArray(outputs) ? outputs : Object.values(outputs || {});
+        outputTensor = outputList[0];
+
+        if (!outputTensor) {
+            throw new Error('Local AI model did not return an output tensor');
+        }
+
+        cpuOutputTensor = outputTensor.accelerator === 'wasm' ? outputTensor : await outputTensor.moveTo('wasm');
+        const outputData = cpuOutputTensor.toTypedArray();
+        return outputData.slice ? outputData.slice() : new outputData.constructor(outputData);
+    } finally {
+        if (inputTensor && !inputTensor.deleted) {
+            inputTensor.delete();
+        }
+
+        const outputList = Array.isArray(outputs) ? outputs : Object.values(outputs || {});
+
+        for (const tensor of outputList) {
+            if (tensor && tensor !== cpuOutputTensor && !tensor.deleted) {
+                tensor.delete();
+            }
+        }
+
+        if (cpuOutputTensor && !cpuOutputTensor.deleted) {
+            cpuOutputTensor.delete();
+        }
+    }
+};
+
+const upscaleLocalAiMediaWithModel = async (item, { signal, setProgress }) => {
+    let compiledModel = null;
+
+    try {
+        throwIfLocalAiCanceled(signal);
+        setProgress?.('Loading bundled upscaling model');
+        const modelBundle = await compileLocalAiUpscalingModel();
+        compiledModel = modelBundle.compiledModel;
+
+        throwIfLocalAiCanceled(signal);
+        setProgress?.('Preparing source image');
+        const source = await prepareLocalAiSourceCanvas(item);
+        const outputCanvas = createLocalAiCanvas(
+            source.processingWidth * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+            source.processingHeight * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        );
+        const outputContext = localAiCanvasContext(outputCanvas);
+        const tileColumns = Math.ceil(source.processingWidth / LOCAL_AI_UPSCALE_TILE_SIZE);
+        const tileRows = Math.ceil(source.processingHeight / LOCAL_AI_UPSCALE_TILE_SIZE);
+        const tileTotal = tileColumns * tileRows;
+        let tileIndex = 0;
+
+        for (let row = 0; row < tileRows; row += 1) {
+            for (let column = 0; column < tileColumns; column += 1) {
+                throwIfLocalAiCanceled(signal);
+                tileIndex += 1;
+                setProgress?.(`Upscaling tile ${tileIndex} of ${tileTotal}`);
+
+                const tileX = column * LOCAL_AI_UPSCALE_TILE_SIZE;
+                const tileY = row * LOCAL_AI_UPSCALE_TILE_SIZE;
+                const cropWidth = Math.min(LOCAL_AI_UPSCALE_TILE_SIZE, source.processingWidth - tileX);
+                const cropHeight = Math.min(LOCAL_AI_UPSCALE_TILE_SIZE, source.processingHeight - tileY);
+                const inputBytes = localAiTileInput(source.context, tileX, tileY, cropWidth, cropHeight);
+                const outputData = await runLocalAiUpscaleTile(
+                    compiledModel,
+                    modelBundle.Tensor,
+                    inputBytes,
+                    modelBundle.inputShape,
+                );
+                drawLocalAiUpscaleTile(
+                    outputContext,
+                    outputData,
+                    tileX,
+                    tileY,
+                    cropWidth,
+                    cropHeight,
+                    modelBundle.outputTileSize,
+                );
+            }
+        }
+
+        throwIfLocalAiCanceled(signal);
+        setProgress?.('Saving derivative');
+        const imageDataUrl = outputCanvas.toDataURL('image/png');
+
+        return invoke('save_local_ai_model_upscale_derivative', {
+            form: {
+                uuid: item.uuid,
+                image_data_url: imageDataUrl,
+                scale_factor: LOCAL_AI_UPSCALE_SCALE_FACTOR,
+                model_id: modelBundle.upscalingModel.id,
+                model_name: modelBundle.upscalingModel.name,
+                model_version: modelBundle.upscalingModel.version,
+                model_license: modelBundle.upscalingModel.license,
+                model_source_url: modelBundle.upscalingModel.source_url,
+                model_license_url: modelBundle.upscalingModel.license_url,
+                model_precision: modelBundle.upscalingModel.precision,
+                accelerator: modelBundle.accelerator,
+                tile_size: LOCAL_AI_UPSCALE_TILE_SIZE,
+                input_width: source.processingWidth,
+                input_height: source.processingHeight,
+                original_width: source.originalWidth,
+                original_height: source.originalHeight,
+            },
+        });
+    } finally {
+        if (compiledModel && !compiledModel.deleted) {
+            compiledModel.delete();
+        }
+    }
+};
+
+const probeLocalAiRuntime = async () => {
+    localAiBusy.value = true;
+    localAiError.value = '';
+    localAiResult.value = null;
+    const webgpu = Boolean(navigator.gpu);
+    let compiledModel = null;
+
+    try {
+        const modelBundle = await compileLocalAiUpscalingModel();
+        compiledModel = modelBundle.compiledModel;
+
+        localAiRuntime.value = {
+            status: 'ready',
+            accelerator: modelBundle.accelerator === 'webgpu' ? 'webgpu_model_ready' : `${modelBundle.accelerator}_model_ready`,
+            webgpu,
+            wasm: true,
+            models: modelBundle.models.length,
+            compiled_model: modelBundle.upscalingModel.name,
+            detail: webgpu
+                ? `WebGPU detected; LiteRT Wasm loaded; ${modelBundle.upscalingModel.name} compiled`
+                : `LiteRT Wasm loaded; ${modelBundle.upscalingModel.name} compiled`,
+        };
+    } catch (error) {
+        localAiRuntime.value = {
+            status: 'error',
+            accelerator: webgpu ? 'webgpu_available_wasm_error' : 'wasm_error',
+            webgpu,
+            wasm: false,
+            models: 0,
+            compiled_model: '',
+            detail: String(error),
+        };
+        localAiError.value = String(error);
+    } finally {
+        if (compiledModel && !compiledModel.deleted) {
+            compiledModel.delete();
+        }
+
+        localAiBusy.value = false;
+    }
+};
+
+const cancelLocalAiOperation = () => {
+    if (!localAiAbortController) {
+        return;
+    }
+
+    localAiAbortController.abort();
+    localAiResult.value = {
+        operation: localAiResult.value?.operation || 'Local AI operation',
+        status: 'canceling',
+        detail: 'Canceling after the current tile',
+    };
+};
+
+const runLocalAiMediaAction = async (operation, action, { reload = false } = {}) => {
+    const controller = new AbortController();
+    localAiAbortController = controller;
+    localAiBusy.value = true;
+    localAiError.value = '';
+    localAiResult.value = { operation, status: 'running', detail: 'Starting' };
+
+    const setProgress = (detail) => {
+        if (!controller.signal.aborted) {
+            localAiResult.value = { operation, status: 'running', detail };
+        }
+    };
+
+    try {
+        const result = await action({ signal: controller.signal, setProgress });
+        throwIfLocalAiCanceled(controller.signal);
+        localAiResult.value = { operation, status: 'complete', result };
+
+        if (reload) {
+            await load();
+            await loadMediaLibrary();
+        }
+    } catch (error) {
+        if (controller.signal.aborted || error?.name === 'AbortError') {
+            localAiResult.value = { operation, status: 'canceled', detail: 'Canceled' };
+        } else {
+            localAiResult.value = null;
+            localAiError.value = String(error);
+        }
+    } finally {
+        if (localAiAbortController === controller) {
+            localAiAbortController = null;
+        }
+
+        localAiBusy.value = false;
+    }
+};
+
+const preflightLocalAiMedia = async (item) => {
+    await runLocalAiMediaAction('Media quality preflight', () => invoke('local_ai_preflight_media', { uuid: item.uuid }));
+};
+
+const upscaleLocalAiMedia = async (item, scaleFactor = LOCAL_AI_UPSCALE_SCALE_FACTOR) => {
+    if (scaleFactor !== LOCAL_AI_UPSCALE_SCALE_FACTOR) {
+        await runLocalAiMediaAction(
+            'Local image upscaling',
+            () => invoke('create_local_ai_upscale_derivative', { uuid: item.uuid, scaleFactor }),
+            { reload: true },
+        );
+        return;
+    }
+
+    await runLocalAiMediaAction(
+        'Local image upscaling',
+        ({ signal, setProgress }) => upscaleLocalAiMediaWithModel(item, { signal, setProgress }),
+        { reload: true },
+    );
+};
+
+const cropLocalAiMedia = async (item) => {
+    await runLocalAiMediaAction(
+        'Smart crop suggestion',
+        () => invoke('create_local_ai_crop_derivative', { uuid: item.uuid, targetRatio: localAiCropRatio.value }),
+        { reload: true },
+    );
+};
+
+const draftLocalAiAltText = async (item) => {
+    await runLocalAiMediaAction('Alt-text draft', () => invoke('draft_local_ai_alt_text', { uuid: item.uuid }));
+};
+
+const searchLocalAiMedia = async () => {
+    localAiBusy.value = true;
+    localAiError.value = '';
+    localAiResult.value = null;
+
+    try {
+        localAiSearchResults.value = await invoke('local_ai_media_search', {
+            query: localAiSearchQuery.value,
+        });
+    } catch (error) {
+        localAiSearchResults.value = null;
+        localAiError.value = String(error);
+    } finally {
+        localAiBusy.value = false;
+    }
+};
+
 const setMediaTab = (tab) => {
     activeMediaTab.value = tab;
     externalMediaError.value = '';
@@ -2694,6 +3280,7 @@ const saveSettings = async () => {
                 operator_name: settingsDraft.value.operator_name || '',
                 admin_email: settingsDraft.value.admin_email || '',
                 desktop_notifications: Boolean(settingsDraft.value.desktop_notifications),
+                local_ai_media_labs: Boolean(settingsDraft.value.local_ai_media_labs),
                 default_accounts: settingsDraft.value.default_accounts.map((id) => Number(id)),
             },
         });
@@ -3071,12 +3658,70 @@ const serviceRecordByName = (serviceName) => {
     return snapshot.value.services.find((service) => service.name === serviceName) || null;
 };
 
+const serviceConfigurationValue = (serviceName, fieldName) => {
+    return String(serviceConfigurationDrafts.value[serviceName]?.[fieldName] || '').trim();
+};
+
+const normalizedServiceBaseUrl = (serviceName, fieldName) => {
+    const value = serviceConfigurationValue(serviceName, fieldName);
+
+    if (!value) {
+        return '';
+    }
+
+    try {
+        const url = new URL(value);
+
+        if (url.protocol !== 'https:') {
+            return '';
+        }
+
+        url.search = '';
+        url.hash = '';
+        url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+
+        return url.toString().replace(/\/$/, '');
+    } catch {
+        return '';
+    }
+};
+
+const appendServicePath = (baseUrl, path) => {
+    const url = new URL(baseUrl);
+    const basePath = url.pathname.replace(/\/+$/, '');
+
+    url.pathname = `${basePath}/${path.replace(/^\/+/, '')}`;
+
+    return url.toString();
+};
+
+const tiktokBrokerBaseUrl = () => normalizedServiceBaseUrl('tiktok', 'broker_base_url');
+const mediaStagingBaseUrl = () => normalizedServiceBaseUrl('media_staging', 'base_url');
+const tiktokBrokerAuthUrl = () => {
+    const baseUrl = tiktokBrokerBaseUrl();
+
+    return baseUrl ? appendServicePath(baseUrl, '/api/tiktok/oauth/start') : '';
+};
+const tiktokBrokerCallbackUrl = () => {
+    const baseUrl = tiktokBrokerBaseUrl();
+
+    return baseUrl ? appendServicePath(baseUrl, '/api/tiktok/oauth/callback') : '';
+};
+
 const serviceStatusByName = (serviceName) => {
     return credentialStatuses.value.find((status) => status.service === serviceName) || null;
 };
 
 const serviceReady = (serviceName) => {
     const status = serviceStatusByName(serviceName);
+
+    if (serviceName === 'tiktok') {
+        return Boolean(status?.configured && serviceActiveValue(serviceName) && tiktokBrokerBaseUrl());
+    }
+
+    if (serviceName === 'media_staging') {
+        return Boolean(status?.configured && serviceActiveValue(serviceName) && mediaStagingBaseUrl());
+    }
 
     return Boolean(status?.configured && serviceActiveValue(serviceName));
 };
@@ -3206,6 +3851,35 @@ const openServiceUrl = async (url) => {
     }
 };
 
+const openTikTokBrokerAuthWithTarget = async (errorTarget) => {
+    errorTarget.value = '';
+
+    const authUrl = tiktokBrokerAuthUrl();
+
+    if (!authUrl) {
+        errorTarget.value = 'Save an HTTPS TikTok Broker URL before starting TikTok authorization';
+        return;
+    }
+
+    await openOAuthUrl(authUrl, errorTarget);
+};
+
+const openTikTokBrokerAuth = async () => {
+    await openTikTokBrokerAuthWithTarget(tiktokConnectionError);
+};
+
+const openTikTokBrokerAuthFromServices = async () => {
+    await openTikTokBrokerAuthWithTarget(serviceError);
+};
+
+const serviceSetupFieldValue = (service, field) => {
+    if (service.id === 'tiktok' && field.key === 'redirect') {
+        return tiktokBrokerCallbackUrl() || field.value;
+    }
+
+    return field.value;
+};
+
 const serviceSetupText = (service) => {
     const lines = [
         `${service.label} setup`,
@@ -3218,7 +3892,7 @@ const serviceSetupText = (service) => {
     }
 
     for (const field of service.setupFields || []) {
-        lines.push(`${field.label}: ${field.value}`);
+        lines.push(`${field.label}: ${serviceSetupFieldValue(service, field)}`);
     }
 
     if (service.credentials?.length) {
@@ -3251,7 +3925,7 @@ const copyServiceSetupField = async (service, field) => {
     serviceError.value = '';
 
     try {
-        await navigator.clipboard.writeText(field.value);
+        await navigator.clipboard.writeText(serviceSetupFieldValue(service, field));
         serviceSetupCopied.value = `${service.id}:${field.key}`;
     } catch (error) {
         serviceError.value = String(error);
@@ -3391,6 +4065,7 @@ const exchangeFacebookOAuth = async () => {
         });
         facebookOAuthDraft.value.code = '';
         facebookOAuthDraft.value.selected_pages = facebookUserConnection.value.pages.map((page) => page.id);
+        facebookOAuthDraft.value.selected_instagram_accounts = (facebookUserConnection.value.instagram_accounts || []).map((account) => account.id);
     } catch (error) {
         facebookUserConnection.value = null;
         facebookOAuthError.value = String(error);
@@ -3429,6 +4104,36 @@ const connectFacebookPages = async () => {
     }
 };
 
+const connectInstagramAccounts = async () => {
+    if (!facebookUserConnection.value) {
+        facebookOAuthError.value = 'Exchange Facebook OAuth before saving Instagram accounts';
+        return;
+    }
+
+    if (!facebookOAuthDraft.value.selected_instagram_accounts.length) {
+        facebookOAuthError.value = 'Select at least one Instagram account';
+        return;
+    }
+
+    facebookOAuthSaving.value = true;
+    facebookOAuthError.value = '';
+
+    try {
+        instagramAccountConnection.value = await invoke('connect_instagram_accounts', {
+            request: {
+                user_id: facebookUserConnection.value.user_id,
+                instagram_ids: facebookOAuthDraft.value.selected_instagram_accounts,
+            },
+        });
+        await load();
+    } catch (error) {
+        instagramAccountConnection.value = null;
+        facebookOAuthError.value = String(error);
+    } finally {
+        facebookOAuthSaving.value = false;
+    }
+};
+
 const selectAllFacebookPages = () => {
     facebookOAuthDraft.value.selected_pages = (facebookUserConnection.value?.pages || []).map((page) => page.id);
 };
@@ -3439,6 +4144,18 @@ const clearFacebookPages = () => {
 
 const facebookPageIsSelected = (page) => {
     return facebookOAuthDraft.value.selected_pages.includes(page.id);
+};
+
+const selectAllInstagramAccounts = () => {
+    facebookOAuthDraft.value.selected_instagram_accounts = (facebookUserConnection.value?.instagram_accounts || []).map((account) => account.id);
+};
+
+const clearInstagramAccounts = () => {
+    facebookOAuthDraft.value.selected_instagram_accounts = [];
+};
+
+const instagramAccountIsSelected = (account) => {
+    return facebookOAuthDraft.value.selected_instagram_accounts.includes(account.id);
 };
 
 const registerMastodonApp = async () => {
@@ -3495,6 +4212,49 @@ const connectMastodonAccount = async () => {
         mastodonOAuthError.value = String(error);
     } finally {
         mastodonOAuthSaving.value = false;
+    }
+};
+
+const connectTikTokAccount = async () => {
+    if (!tiktokConnectionDraft.value.provider_id.trim()) {
+        tiktokConnectionError.value = 'TikTok user ID is required';
+        return;
+    }
+
+    if (!tiktokConnectionDraft.value.name.trim()) {
+        tiktokConnectionError.value = 'TikTok display name is required';
+        return;
+    }
+
+    if (!tiktokConnectionDraft.value.broker_connection.trim()) {
+        tiktokConnectionError.value = 'Broker connection credential is required';
+        return;
+    }
+
+    tiktokConnectionSaving.value = true;
+    tiktokConnectionError.value = '';
+
+    try {
+        tiktokConnection.value = await invoke('connect_tiktok_account', {
+            request: {
+                provider_id: tiktokConnectionDraft.value.provider_id,
+                name: tiktokConnectionDraft.value.name,
+                username: tiktokConnectionDraft.value.username || null,
+                avatar_path: tiktokConnectionDraft.value.avatar_path || null,
+                broker_connection: tiktokConnectionDraft.value.broker_connection,
+                scopes: tiktokConnectionDraft.value.scopes
+                    .split(',')
+                    .map((scope) => scope.trim())
+                    .filter(Boolean),
+            },
+        });
+        tiktokConnectionDraft.value.broker_connection = '';
+        await load();
+    } catch (error) {
+        tiktokConnection.value = null;
+        tiktokConnectionError.value = String(error);
+    } finally {
+        tiktokConnectionSaving.value = false;
     }
 };
 
@@ -3634,6 +4394,21 @@ const refreshFacebookPageAccount = async (uuid) => {
     }
 };
 
+const refreshInstagramAccount = async (uuid) => {
+    accountRefreshingUuid.value = uuid;
+    accountError.value = '';
+
+    try {
+        await invoke('refresh_instagram_account', { uuid });
+        await load();
+    } catch (error) {
+        accountError.value = String(error);
+        await load();
+    } finally {
+        accountRefreshingUuid.value = '';
+    }
+};
+
 const importMastodonAccountData = async (uuid) => {
     accountImportingUuid.value = uuid;
     accountError.value = '';
@@ -3670,6 +4445,36 @@ const importFacebookPageData = async (uuid) => {
 
     try {
         facebookImportSummary.value = await invoke('import_facebook_page_data', { uuid });
+        await load();
+    } catch (error) {
+        accountError.value = String(error);
+        await load();
+    } finally {
+        accountImportingUuid.value = '';
+    }
+};
+
+const importInstagramAccountData = async (uuid) => {
+    accountImportingUuid.value = uuid;
+    accountError.value = '';
+
+    try {
+        instagramImportSummary.value = await invoke('import_instagram_account_data', { uuid });
+        await load();
+    } catch (error) {
+        accountError.value = String(error);
+        await load();
+    } finally {
+        accountImportingUuid.value = '';
+    }
+};
+
+const importTikTokAccountData = async (uuid) => {
+    accountImportingUuid.value = uuid;
+    accountError.value = '';
+
+    try {
+        tiktokImportSummary.value = await invoke('import_tiktok_account_data', { uuid });
         await load();
     } catch (error) {
         accountError.value = String(error);
@@ -5414,20 +6219,20 @@ onUnmounted(() => {
 
                                 <article class="provider-connect-card">
                                     <header>
-                                        <strong>Facebook Page</strong>
+                                        <strong>Facebook Page / Instagram</strong>
                                         <span :class="['mini-state', serviceReady('facebook') ? 'is-ok' : 'is-muted']">
                                             {{ serviceReady('facebook') ? 'ready' : 'service missing' }}
                                         </span>
                                     </header>
                                     <div v-if="!serviceReady('facebook')" class="form-warning">
-                                        Facebook service credentials must be active before connecting Pages.
+                                        Facebook service credentials must be active before connecting Pages or Instagram accounts.
                                         <button type="button" class="inline-button" @click="showServiceTab('facebook')">Open Services</button>
                                     </div>
                                     <form class="facebook-oauth-form" @submit.prevent="exchangeFacebookOAuth">
                                         <input v-model="facebookOAuthDraft.redirect_uri" placeholder="Facebook redirect URI" />
                                         <input v-model="facebookOAuthDraft.code" placeholder="Authorization code" />
                                         <button type="button" :disabled="facebookOAuthSaving || !serviceReady('facebook')" @click="startFacebookOAuth">Start Facebook</button>
-                                        <button type="submit" :disabled="facebookOAuthSaving || !serviceReady('facebook')">List Pages</button>
+                                        <button type="submit" :disabled="facebookOAuthSaving || !serviceReady('facebook')">List Accounts</button>
                                     </form>
                                     <div v-if="facebookOAuthStart" class="form-note">
                                         Facebook OAuth started ·
@@ -5473,6 +6278,43 @@ onUnmounted(() => {
                                     <div v-if="facebookPageConnection" class="form-note">
                                         {{ facebookPageConnection.accounts.length }} Facebook Page account(s) connected
                                     </div>
+                                    <div v-if="facebookUserConnection?.instagram_accounts?.length" class="facebook-entity-selector">
+                                        <div class="facebook-entity-toolbar">
+                                            <small>Instagram · {{ facebookOAuthDraft.selected_instagram_accounts.length }}/{{ facebookUserConnection.instagram_accounts.length }} selected</small>
+                                            <div class="row-actions">
+                                                <button type="button" class="inline-button" :disabled="facebookOAuthSaving" @click="selectAllInstagramAccounts">
+                                                    Select All
+                                                </button>
+                                                <button type="button" class="inline-button" :disabled="facebookOAuthSaving" @click="clearInstagramAccounts">
+                                                    Clear
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <label
+                                            v-for="account in facebookUserConnection.instagram_accounts"
+                                            :key="account.id"
+                                            :class="['facebook-entity-card', { 'is-selected': instagramAccountIsSelected(account) }]"
+                                        >
+                                            <input v-model="facebookOAuthDraft.selected_instagram_accounts" type="checkbox" :value="account.id" />
+                                            <span class="provider-preview-avatar">
+                                                <img v-if="account.avatar_path" :src="mediaAssetUrl(account.avatar_path)" :alt="account.name" />
+                                                <span v-else>{{ accountInitials({ name: account.name, provider: 'instagram' }) }}</span>
+                                            </span>
+                                            <span>
+                                                <strong>{{ account.name }}</strong>
+                                                <small>{{ account.username ? `@${account.username}` : account.page_name }}</small>
+                                            </span>
+                                            <span :class="['mini-state', instagramAccountIsSelected(account) ? 'is-ok' : 'is-muted']">
+                                                {{ instagramAccountIsSelected(account) ? 'selected' : 'instagram' }}
+                                            </span>
+                                        </label>
+                                        <button type="button" :disabled="facebookOAuthSaving" @click="connectInstagramAccounts">
+                                            Save Instagram
+                                        </button>
+                                    </div>
+                                    <div v-if="instagramAccountConnection" class="form-note">
+                                        {{ instagramAccountConnection.accounts.length }} Instagram account(s) connected
+                                    </div>
                                 </article>
 
                                 <article class="provider-connect-card">
@@ -5503,6 +6345,38 @@ onUnmounted(() => {
                                         {{ mastodonOAuthConnection.account.name }} connected on {{ mastodonOAuthConnection.server }}
                                     </div>
                                 </article>
+
+                                <article class="provider-connect-card">
+                                    <header>
+                                        <strong>TikTok</strong>
+                                        <span :class="['mini-state', serviceReady('tiktok') ? 'is-ok' : 'is-muted']">
+                                            {{ serviceReady('tiktok') ? 'broker ready' : 'service missing' }}
+                                        </span>
+                                    </header>
+                                    <div v-if="!serviceReady('tiktok')" class="form-warning">
+                                        TikTok requires the client key, active service status, and HTTPS broker URL before analytics imports.
+                                        <button type="button" class="inline-button" @click="showServiceTab('tiktok')">Open Services</button>
+                                    </div>
+                                    <div v-else class="form-note">
+                                        Authorize in the broker, then paste the returned account values and broker credential here.
+                                        <button type="button" class="inline-button" @click="openTikTokBrokerAuth">Open Broker Auth</button>
+                                    </div>
+                                    <form class="tiktok-connection-form" @submit.prevent="connectTikTokAccount">
+                                        <input v-model="tiktokConnectionDraft.provider_id" placeholder="TikTok user ID" />
+                                        <input v-model="tiktokConnectionDraft.name" placeholder="Display name" />
+                                        <input v-model="tiktokConnectionDraft.username" placeholder="Username" />
+                                        <input v-model="tiktokConnectionDraft.scopes" placeholder="Granted scopes" />
+                                        <input v-model="tiktokConnectionDraft.broker_connection" type="password" autocomplete="new-password" placeholder="Broker connection credential" />
+                                        <button type="submit" :disabled="tiktokConnectionSaving || !serviceReady('tiktok')">Connect</button>
+                                    </form>
+                                    <div class="form-note">
+                                        Assisted publishing is available for MVP. Direct TikTok API publishing stays disabled until the app is approved for upload or publish scopes.
+                                    </div>
+                                    <div v-if="tiktokConnectionError" class="form-error">{{ tiktokConnectionError }}</div>
+                                    <div v-if="tiktokConnection" class="form-note">
+                                        {{ tiktokConnection.account.name }} connected on TikTok
+                                    </div>
+                                </article>
                                     </div>
                                 </div>
                             </div>
@@ -5514,7 +6388,7 @@ onUnmounted(() => {
                                 <button type="button" class="add-account-card" @click="addAccountModalOpen = true">
                                     <span>+</span>
                                     <strong>Add account</strong>
-                                    <small>Connect X, Facebook Page, or Mastodon.</small>
+                                    <small>Connect X, Facebook Page, Instagram, Mastodon, or TikTok.</small>
                                 </button>
                                 <article v-for="account in snapshot.accounts" :key="account.uuid" class="connected-account-card">
                                     <header>
@@ -5564,6 +6438,15 @@ onUnmounted(() => {
                                             Refresh
                                         </button>
                                         <button
+                                            v-if="account.provider === 'instagram'"
+                                            type="button"
+                                            class="inline-button"
+                                            :disabled="accountRefreshingUuid === account.uuid"
+                                            @click="refreshInstagramAccount(account.uuid)"
+                                        >
+                                            Refresh
+                                        </button>
+                                        <button
                                             v-if="account.provider === 'mastodon'"
                                             type="button"
                                             class="inline-button"
@@ -5591,7 +6474,25 @@ onUnmounted(() => {
                                             Import
                                         </button>
                                         <button
-                                            v-if="['mastodon', 'twitter', 'facebook_page'].includes(account.provider)"
+                                            v-if="account.provider === 'instagram'"
+                                            type="button"
+                                            class="inline-button"
+                                            :disabled="accountImportingUuid === account.uuid"
+                                            @click="importInstagramAccountData(account.uuid)"
+                                        >
+                                            Import
+                                        </button>
+                                        <button
+                                            v-if="account.provider === 'tiktok'"
+                                            type="button"
+                                            class="inline-button"
+                                            :disabled="accountImportingUuid === account.uuid"
+                                            @click="importTikTokAccountData(account.uuid)"
+                                        >
+                                            Import
+                                        </button>
+                                        <button
+                                            v-if="accountImportSupported(account)"
                                             type="button"
                                             class="inline-button"
                                             :disabled="accountQueuingUuid === account.uuid"
@@ -5615,6 +6516,14 @@ onUnmounted(() => {
                             </div>
                             <div v-if="facebookImportSummary" class="form-note">
                                 {{ facebookImportSummary.account.name }} imported {{ facebookImportSummary.insight_rows }} insight rows
+                            </div>
+                            <div v-if="instagramImportSummary" class="form-note">
+                                {{ instagramImportSummary.account.name }} imported {{ instagramImportSummary.imported_posts }} media item(s) ·
+                                {{ instagramImportSummary.metric_days }} metric days
+                            </div>
+                            <div v-if="tiktokImportSummary" class="form-note">
+                                {{ tiktokImportSummary.account.name }} imported {{ tiktokImportSummary.imported_posts }} videos ·
+                                {{ tiktokImportSummary.metric_days }} metric days
                             </div>
                             <div v-if="queuedImportJob" class="form-note">
                                 Queued account import
@@ -5705,7 +6614,7 @@ onUnmounted(() => {
                                         class="service-setup-item"
                                     >
                                         <span>{{ field.label }}</span>
-                                        <code>{{ field.value }}</code>
+                                        <code>{{ serviceSetupFieldValue(activeServiceDefinition, field) }}</code>
                                         <button
                                             type="button"
                                             class="inline-button"
@@ -5743,7 +6652,10 @@ onUnmounted(() => {
                                 <div v-if="activeServiceDefinition.configuration.length" class="service-options-grid">
                                     <label v-for="configField in activeServiceDefinition.configuration" :key="configField.field">
                                         <span>{{ configField.label }}</span>
-                                        <select v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]">
+                                        <select
+                                            v-if="configField.options?.length"
+                                            v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]"
+                                        >
                                             <option
                                                 v-for="option in configField.options"
                                                 :key="typeof option === 'string' ? option : option.value"
@@ -5752,6 +6664,11 @@ onUnmounted(() => {
                                                 {{ typeof option === 'string' ? option : option.label }}
                                             </option>
                                         </select>
+                                        <input
+                                            v-else
+                                            v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]"
+                                            :placeholder="configField.placeholder || ''"
+                                        />
                                     </label>
                                 </div>
                                 <div class="service-provider-actions">
@@ -5769,6 +6686,15 @@ onUnmounted(() => {
                                         @click="saveServiceConfiguration(activeServiceDefinition.id, serviceActiveValue(activeServiceDefinition.id))"
                                     >
                                         Save Service
+                                    </button>
+                                    <button
+                                        v-if="activeServiceDefinition.id === 'tiktok'"
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="!tiktokBrokerAuthUrl()"
+                                        @click="openTikTokBrokerAuthFromServices"
+                                    >
+                                        Open Broker Auth
                                     </button>
                                 </div>
                             </section>
@@ -6409,6 +7335,63 @@ onUnmounted(() => {
                                     {{ tab.label }}
                                 </button>
                             </div>
+                            <div v-if="localAiLabsEnabled" class="local-ai-panel">
+                                <header>
+                                    <div>
+                                        <strong>Local AI Media Labs</strong>
+                                        <small>{{ localAiRuntime.detail }}</small>
+                                    </div>
+                                    <span :class="['mini-state', localAiRuntime.status === 'ready' ? 'is-ok' : 'is-muted']">
+                                        {{ localAiRuntime.accelerator }}
+                                    </span>
+                                </header>
+                                <div class="local-ai-controls">
+                                    <button type="button" class="inline-button" :disabled="localAiBusy" @click="probeLocalAiRuntime">
+                                        Probe LiteRT
+                                    </button>
+                                    <select v-model="localAiCropRatio" aria-label="Smart crop ratio">
+                                        <option value="square">1:1</option>
+                                        <option value="portrait_4_5">4:5</option>
+                                        <option value="landscape_16_9">16:9</option>
+                                        <option value="story_9_16">9:16</option>
+                                    </select>
+                                    <form class="local-ai-search-form" @submit.prevent="searchLocalAiMedia">
+                                        <input v-model="localAiSearchQuery" placeholder="Semantic media search" />
+                                        <button type="submit" :disabled="localAiBusy">Search</button>
+                                    </form>
+                                </div>
+                                <div v-if="localAiBusy" class="form-note local-ai-progress">
+                                    <span>{{ localAiResult?.detail || 'Local AI operation running' }}</span>
+                                    <button type="button" class="inline-button" @click="cancelLocalAiOperation">Cancel</button>
+                                </div>
+                                <div v-if="localAiError" class="form-error">{{ localAiError }}</div>
+                                <div v-if="localAiResult?.status === 'complete'" class="form-note">
+                                    {{ localAiResult.operation }} complete
+                                    <span v-if="localAiResult.result?.derivative"> · {{ localAiResult.result.derivative.name }}</span>
+                                    <span v-if="localAiResult.result?.alt_text"> · {{ localAiResult.result.alt_text }}</span>
+                                </div>
+                                <div v-if="localAiResult?.result?.warnings?.length" class="local-ai-warning-list">
+                                    <span
+                                        v-for="warning in localAiResult.result.warnings"
+                                        :key="warning.code"
+                                        :class="['mini-state', warning.severity === 'ok' ? 'is-ok' : 'is-muted']"
+                                    >
+                                        {{ warning.message }}
+                                    </span>
+                                </div>
+                                <div v-if="localAiSearchResults?.matches?.length" class="local-ai-results">
+                                    <button
+                                        v-for="match in localAiSearchResults.matches.slice(0, 6)"
+                                        :key="match.media.uuid"
+                                        type="button"
+                                        class="local-ai-result"
+                                        @click="selectedMediaIds = [match.media.id]"
+                                    >
+                                        <span>{{ match.media.name }}</span>
+                                        <small>{{ match.score }} · {{ match.reasons.join(', ') }}</small>
+                                    </button>
+                                </div>
+                            </div>
                             <div v-if="selectedMediaCount" class="selectable-bar">
                                 <strong>{{ selectedMediaCount }} selected</strong>
                                 <div class="row-actions">
@@ -6570,6 +7553,42 @@ onUnmounted(() => {
                                 </div>
                                 <div class="row-actions">
                                     <span class="mini-state">{{ item.disk }}</span>
+                                    <button
+                                        v-if="localAiLabsEnabled"
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="localAiBusy"
+                                        @click="preflightLocalAiMedia(item)"
+                                    >
+                                        Preflight
+                                    </button>
+                                    <button
+                                        v-if="localAiLabsEnabled"
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="localAiBusy"
+                                        @click="draftLocalAiAltText(item)"
+                                    >
+                                        Alt Text
+                                    </button>
+                                    <button
+                                        v-if="localAiLabsEnabled && localAiStaticImage(item)"
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="localAiBusy"
+                                        @click="upscaleLocalAiMedia(item)"
+                                    >
+                                        Upscale
+                                    </button>
+                                    <button
+                                        v-if="localAiLabsEnabled && localAiStaticImage(item)"
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="localAiBusy"
+                                        @click="cropLocalAiMedia(item)"
+                                    >
+                                        Crop
+                                    </button>
                                     <button type="button" class="danger-inline-button" :disabled="mediaSaving" @click="deleteMedia(item.uuid)">
                                         Delete
                                     </button>
@@ -6698,6 +7717,20 @@ onUnmounted(() => {
                             </div>
                             <div v-if="desktopNotificationTestSent" class="form-note">Test notification sent</div>
                             <div v-if="desktopNotificationError" class="form-error">{{ desktopNotificationError }}</div>
+                        </article>
+
+                        <article class="settings-panel">
+                            <header>
+                                <div>
+                                    <h3>Labs</h3>
+                                    <p>Opt-in local processing tools for media preparation.</p>
+                                </div>
+                                <span class="mini-state">{{ settingsDraft.local_ai_media_labs ? 'Local AI on' : 'Local AI off' }}</span>
+                            </header>
+                            <label class="settings-row">
+                                <span>Local AI media</span>
+                                <input v-model="settingsDraft.local_ai_media_labs" type="checkbox" />
+                            </label>
                         </article>
 
                         <article class="settings-panel">

@@ -84,6 +84,14 @@ function parseSubmissionId(output) {
     }
 }
 
+function gatekeeperArgs(filePath) {
+    if (filePath.endsWith('.dmg')) {
+        return ['-a', '-vv', '-t', 'open', '--context', 'context:primary-signature', filePath];
+    }
+
+    return ['-a', '-vv', filePath];
+}
+
 async function firstAppleApiKeyPath() {
     const directory = appleAuthDirectory();
 
@@ -219,7 +227,7 @@ if (result.status !== 0) {
 }
 
 console.log('Validating Gatekeeper assessment.');
-result = run('spctl', ['-a', '-vv', artifactPath], { stdio: 'inherit' });
+result = run('spctl', gatekeeperArgs(artifactPath), { stdio: 'inherit' });
 
 if (result.status !== 0) {
     process.exit(result.status || 1);

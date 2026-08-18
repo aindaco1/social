@@ -4,8 +4,10 @@ mod domain;
 mod external_media;
 mod facebook;
 mod mastodon;
+mod media_staging;
 mod media_tools;
 mod secrets;
+mod tiktok;
 mod twitter;
 
 use tauri::Manager;
@@ -48,14 +50,25 @@ pub fn run() {
             commands::refresh_mastodon_account,
             commands::refresh_twitter_account,
             commands::refresh_facebook_page_account,
+            commands::refresh_instagram_account,
             commands::import_mastodon_account_data,
             commands::import_twitter_account_data,
             commands::import_facebook_page_data,
+            commands::import_instagram_account_data,
+            commands::connect_tiktok_account,
+            commands::import_tiktok_account_data,
+            commands::import_tiktok_analytics,
             commands::queue_account_import,
             commands::queue_all_account_imports,
             commands::query_media_library,
             commands::import_media_file,
             commands::download_external_media,
+            commands::local_ai_preflight_media,
+            commands::create_local_ai_upscale_derivative,
+            commands::save_local_ai_model_upscale_derivative,
+            commands::create_local_ai_crop_derivative,
+            commands::local_ai_media_search,
+            commands::draft_local_ai_alt_text,
             commands::delete_media,
             commands::cleanup_orphaned_media_files,
             commands::search_external_media,
@@ -78,6 +91,7 @@ pub fn run() {
             commands::start_facebook_oauth,
             commands::exchange_facebook_oauth,
             commands::connect_facebook_pages,
+            commands::connect_instagram_accounts,
             commands::register_mastodon_app,
             commands::connect_mastodon_account,
             commands::save_service,

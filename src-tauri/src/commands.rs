@@ -5,22 +5,26 @@ use crate::domain::{
     ExternalMediaSearchRequest, ExternalMediaSearchResult, FacebookImportSummary,
     FacebookInsightForm, FacebookOAuthExchangeForm, FacebookOAuthStartForm,
     FacebookOAuthStartSummary, FacebookPageConnectForm, FacebookPageConnectionSummary,
-    FacebookUserConnectionSummary, JobSummary, LocalBackupExportSummary, LocalBackupRestoreForm,
-    LocalBackupRestoreSummary, LocalDataSnapshot, MastodonAccountConnection,
-    MastodonAppRegistrationForm, MastodonAppRegistrationSummary, MastodonImportSummary,
-    MastodonOAuthForm, MediaCleanupSummary, MediaDownloadForm, MediaImportForm, MediaLibraryItem,
-    MediaLibraryRequest, MediaSummary, MetricForm, PostDetail, PostForm, PostQueryRequest,
-    PostQueryResult, PostSummary, PostValidationReport, ReportRequest, ReportSnapshot,
-    SchedulePostForm, ServiceCredentialForm, ServiceCredentialStatus, ServiceForm, ServiceSummary,
-    StaleJobRecoverySummary, SystemHealthCounts, SystemHealthIssue, SystemHealthSummary,
-    SystemLogClearSummary, SystemLogExportSummary, SystemLogFile, SystemMaintenanceSummary,
-    SystemMediaToolStatus, SystemMediaToolSummary, TagForm, TagSummary, TwitterAccountConnection,
-    TwitterImportSummary, TwitterOAuthExchangeForm, TwitterOAuthStartForm,
-    TwitterOAuthStartSummary, WorkerRunSummary,
+    FacebookUserConnectionSummary, InstagramAccountConnectForm, InstagramAccountConnectionSummary,
+    InstagramImportSummary, JobSummary, LocalAiAltTextDraftSummary, LocalAiMediaDerivativeSummary,
+    LocalAiMediaPreflightSummary, LocalAiMediaSearchSummary, LocalAiModelUpscaleDerivativeForm,
+    LocalBackupExportSummary, LocalBackupRestoreForm, LocalBackupRestoreSummary, LocalDataSnapshot,
+    MastodonAccountConnection, MastodonAppRegistrationForm, MastodonAppRegistrationSummary,
+    MastodonImportSummary, MastodonOAuthForm, MediaCleanupSummary, MediaDownloadForm,
+    MediaImportForm, MediaLibraryItem, MediaLibraryRequest, MediaSummary, MetricForm, PostDetail,
+    PostForm, PostQueryRequest, PostQueryResult, PostSummary, PostValidationReport, ReportRequest,
+    ReportSnapshot, SchedulePostForm, ServiceCredentialForm, ServiceCredentialStatus, ServiceForm,
+    ServiceSummary, StaleJobRecoverySummary, SystemHealthCounts, SystemHealthIssue,
+    SystemHealthSummary, SystemLogClearSummary, SystemLogExportSummary, SystemLogFile,
+    SystemMaintenanceSummary, SystemMediaToolStatus, SystemMediaToolSummary, TagForm, TagSummary,
+    TikTokAccountConnection, TikTokAnalyticsImportForm, TikTokBrokerConnectionForm,
+    TikTokImportSummary, TwitterAccountConnection, TwitterImportSummary, TwitterOAuthExchangeForm,
+    TwitterOAuthStartForm, TwitterOAuthStartSummary, WorkerRunSummary,
 };
 use crate::external_media::search_external_media as search_external_media_provider;
 use crate::facebook::{
     connect_facebook_pages as connect_facebook_pages_provider,
+    connect_instagram_accounts as connect_instagram_accounts_provider,
     exchange_facebook_oauth as exchange_facebook_oauth_provider,
     start_facebook_oauth as start_facebook_oauth_provider,
 };
@@ -33,6 +37,7 @@ use crate::secrets::{
     save_service_credential as save_service_credential_secret,
     service_credential_statuses as build_service_credential_statuses,
 };
+use crate::tiktok::connect_tiktok_account as connect_tiktok_account_provider;
 use crate::twitter::{
     connect_twitter_account as connect_twitter_account_provider,
     start_twitter_oauth as start_twitter_oauth_provider,
@@ -478,6 +483,26 @@ pub fn import_facebook_page_data(
 }
 
 #[tauri::command]
+pub fn refresh_instagram_account(
+    database: State<'_, Database>,
+    uuid: String,
+) -> Result<AccountSummary, String> {
+    database
+        .refresh_instagram_account(&uuid)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn import_instagram_account_data(
+    database: State<'_, Database>,
+    uuid: String,
+) -> Result<InstagramImportSummary, String> {
+    database
+        .import_instagram_account_data(&uuid)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn import_twitter_account_data(
     database: State<'_, Database>,
     uuid: String,
@@ -494,6 +519,40 @@ pub fn import_mastodon_account_data(
 ) -> Result<MastodonImportSummary, String> {
     database
         .import_mastodon_account_data(&uuid)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn connect_tiktok_account(
+    database: State<'_, Database>,
+    request: TikTokBrokerConnectionForm,
+) -> Result<TikTokAccountConnection, String> {
+    let account_form =
+        connect_tiktok_account_provider(&request).map_err(|error| error.to_string())?;
+    let account = database
+        .save_account(&account_form)
+        .map_err(|error| error.to_string())?;
+
+    Ok(TikTokAccountConnection { account })
+}
+
+#[tauri::command]
+pub fn import_tiktok_account_data(
+    database: State<'_, Database>,
+    uuid: String,
+) -> Result<TikTokImportSummary, String> {
+    database
+        .import_tiktok_account_data(&uuid)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn import_tiktok_analytics(
+    database: State<'_, Database>,
+    analytics: TikTokAnalyticsImportForm,
+) -> Result<TikTokImportSummary, String> {
+    database
+        .import_tiktok_analytics(&analytics)
         .map_err(|error| error.to_string())
 }
 
@@ -567,6 +626,68 @@ pub fn download_external_media(
 ) -> Result<MediaSummary, String> {
     database
         .download_external_media(&media)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn local_ai_preflight_media(
+    database: State<'_, Database>,
+    uuid: String,
+) -> Result<LocalAiMediaPreflightSummary, String> {
+    database
+        .local_ai_preflight_media(&uuid)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn create_local_ai_upscale_derivative(
+    database: State<'_, Database>,
+    uuid: String,
+    scale_factor: u8,
+) -> Result<LocalAiMediaDerivativeSummary, String> {
+    database
+        .create_local_ai_upscale_derivative(&uuid, scale_factor)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn save_local_ai_model_upscale_derivative(
+    database: State<'_, Database>,
+    form: LocalAiModelUpscaleDerivativeForm,
+) -> Result<LocalAiMediaDerivativeSummary, String> {
+    database
+        .save_local_ai_model_upscale_derivative(&form)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn create_local_ai_crop_derivative(
+    database: State<'_, Database>,
+    uuid: String,
+    target_ratio: String,
+) -> Result<LocalAiMediaDerivativeSummary, String> {
+    database
+        .create_local_ai_crop_derivative(&uuid, &target_ratio)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn local_ai_media_search(
+    database: State<'_, Database>,
+    query: String,
+) -> Result<LocalAiMediaSearchSummary, String> {
+    database
+        .local_ai_media_search(&query)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn draft_local_ai_alt_text(
+    database: State<'_, Database>,
+    uuid: String,
+) -> Result<LocalAiAltTextDraftSummary, String> {
+    database
+        .draft_local_ai_alt_text(&uuid)
         .map_err(|error| error.to_string())
 }
 
@@ -776,6 +897,7 @@ pub fn exchange_facebook_oauth(
         user_id: connection.user_id,
         user_name: connection.user_name,
         pages: connection.pages,
+        instagram_accounts: connection.instagram_accounts,
     })
 }
 
@@ -798,6 +920,27 @@ pub fn connect_facebook_pages(
     }
 
     Ok(FacebookPageConnectionSummary { accounts })
+}
+
+#[tauri::command]
+pub fn connect_instagram_accounts(
+    database: State<'_, Database>,
+    mut request: InstagramAccountConnectForm,
+) -> Result<InstagramAccountConnectionSummary, String> {
+    request.api_version = facebook_api_version(&database)?;
+    let connection =
+        connect_instagram_accounts_provider(&request).map_err(|error| error.to_string())?;
+    let mut accounts = Vec::new();
+
+    for account in connection.accounts {
+        accounts.push(
+            database
+                .save_account(&account)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+
+    Ok(InstagramAccountConnectionSummary { accounts })
 }
 
 #[tauri::command]
@@ -1140,6 +1283,7 @@ mod tests {
                 "connect_twitter_account",
                 "exchange_facebook_oauth",
                 "connect_mastodon_account",
+                "connect_tiktok_account",
             ],
         },
     ];

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "updated": "2026-07-15",
+  "models": [
+    {
+      "id": "real-esrgan-x4plus-w8a8",
+      "name": "Real-ESRGAN-x4plus",
+      "feature": "image_upscaling",
+      "runtime": "litert",
+      "format": "tflite",
+      "precision": "w8a8",
+      "version": "qai-hub-models-v0.57.3",
+      "source_url": "https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/real_esrgan_x4plus/releases/v0.57.3/real_esrgan_x4plus-tflite-w8a8.zip",
+      "source_sha256": "cfaec8e3491ee7ebdaaf3665bab6f8ed75cc2adbeb3c0f6db343df512440fceb",
+      "model_card_url": "https://huggingface.co/qualcomm/Real-ESRGAN-x4plus",
+      "vendor_page_url": "https://aihub.qualcomm.com/models/real_esrgan_x4plus",
+      "license": "BSD-3-Clause",
+      "license_url": "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE",
+      "license_file": "real-esrgan-x4plus-w8a8/LICENSE.BSD-3-Clause.txt",
+      "redistribution_review": {
+        "status": "source_license_recorded",
+        "reviewed_at": "2026-07-15",
+        "notes": "Qualcomm AI Hub labels the model license as BSD-3-Clause and points to the original Real-ESRGAN license. Preserve the bundled BSD-3-Clause notice with distributed app artifacts."
+      },
+      "inputs": {
+        "image": {
+          "shape": [1, 128, 128, 3],
+          "dtype": "uint8",
+          "value_range": [0.0, 1.0]
+        }
+      },
+      "outputs": {
+        "upscaled_image": {
+          "shape": [1, 512, 512, 3],
+          "dtype": "uint8",
+          "value_range": [0.0, 1.0]
+        }
+      },
+      "files": [
+        {
+          "path": "real-esrgan-x4plus-w8a8/real_esrgan_x4plus.tflite",
+          "kind": "model",
+          "size": 17566264,
+          "sha256": "1b40d1e68931fa6bd599e7ebe62c536cf02cb888c3a49a817ee646c2906e326a"
+        },
+        {
+          "path": "real-esrgan-x4plus-w8a8/vendor-metadata.json",
+          "kind": "vendor_metadata",
+          "size": 1616,
+          "sha256": "9261d3f66ccdaada22114054cd3894e8e567e05ca5a0724fb87fbb8a4aaa32f0"
+        },
+        {
+          "path": "real-esrgan-x4plus-w8a8/LICENSE.BSD-3-Clause.txt",
+          "kind": "license",
+          "size": 1519,
+          "sha256": "4a699ec4863d96a91fc265948a0c90033f7e8735d515524dcf3444736406e0c2"
+        }
+      ]
+    }
+  ]
+}

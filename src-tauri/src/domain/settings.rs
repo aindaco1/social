@@ -11,6 +11,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub operator_name: String,
     pub admin_email: String,
+    #[serde(default)]
+    pub local_ai_media_labs: bool,
     pub default_accounts: Vec<i64>,
 }
 
@@ -24,6 +26,7 @@ impl Default for AppSettings {
             desktop_notifications: true,
             operator_name: String::new(),
             admin_email: String::new(),
+            local_ai_media_labs: false,
             default_accounts: Vec::new(),
         }
     }

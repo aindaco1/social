@@ -1,0 +1,5 @@
+MEDIA_STAGING_TOKEN=replace-with-random-token
+PUBLIC_MEDIA_BASE_URL=https://dustwave-media-staging.jogo.workers.dev
+MEDIA_STAGING_BUCKET_NAME=dustwave-media-staging
+MAX_OBJECT_BYTES=26214400
+DEFAULT_TTL_SECONDS=86400
