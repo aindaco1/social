@@ -6,10 +6,12 @@ on:
     branches:
       - main
       - master
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       build_bundle:
-        description: Build and upload signed macOS desktop bundles
+        description: Build and upload signed, notarized macOS desktop bundles
         required: false
         default: "false"
         type: choice
@@ -33,7 +35,7 @@ on:
           - "false"
           - "true"
       publish_release:
-        description: Create a draft GitHub release from the bundle artifacts
+        description: Publish a GitHub release from the verified bundle artifacts
         required: false
         default: "false"
         type: choice
@@ -80,14 +82,18 @@ jobs:
 
   release-bundle:
     name: macOS release bundle
+    needs: release-check
     runs-on: macos-26
-    if: github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true')
     permissions:
       contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -103,14 +109,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate release version and tag
+        env:
+          DUSTWAVE_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" || "${{ inputs.publish_release }}" == "true" ]]; then
+            test -n "$DUSTWAVE_RELEASE_TAG"
+          fi
+          npm run desktop:release:version:check -- --tag "$DUSTWAVE_RELEASE_TAG"
+
+      - name: Prepare desktop target
+        run: npm run desktop:target:prepare
+
       - name: Prepare Apple API key file
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
           set -euo pipefail
 
           if [[ -n "${APPLE_API_KEY_P8:-}" ]]; then
+            test -n "${APPLE_API_KEY:-}"
+            test -n "${APPLE_API_ISSUER:-}"
             key_dir="$RUNNER_TEMP/apple-auth"
             key_name="${APPLE_API_KEY:-app-store-connect}"
             key_path="$key_dir/AuthKey_${key_name}.p8"
@@ -118,18 +140,22 @@ jobs:
             mkdir -p "$key_dir"
             printf '%s' "$APPLE_API_KEY_P8" > "$key_path"
             chmod 600 "$key_path"
-            echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+            {
+              echo "APPLE_API_KEY_PATH=$key_path"
+              echo "APPLE_API_KEY=$APPLE_API_KEY"
+              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+            } >> "$GITHUB_ENV"
           fi
 
       - name: Cache LGPL FFmpeg sidecars
-        if: inputs.build_media_sidecars == 'true'
+        if: github.ref_type == 'tag' || inputs.build_media_sidecars == 'true'
         uses: actions/cache@v6
         with:
           path: src-tauri/target/ffmpeg-lgpl
           key: ffmpeg-lgpl-8.1.2-macos-26-aarch64-${{ hashFiles('scripts/build-ffmpeg-lgpl-sidecars.mjs', 'THIRD_PARTY_NOTICES.md') }}
 
       - name: Build LGPL FFmpeg sidecars
-        if: inputs.build_media_sidecars == 'true'
+        if: github.ref_type == 'tag' || inputs.build_media_sidecars == 'true'
         env:
           DUSTWAVE_FFMPEG_SOURCE_CACHE: ${{ github.workspace }}/src-tauri/target/ffmpeg-lgpl
         run: npm run desktop:media:build-lgpl
@@ -141,16 +167,19 @@ jobs:
           APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          DUSTWAVE_RELEASE_REPO: ${{ inputs.release_repository || github.repository }}
+          DUSTWAVE_RELEASE_REPO: ${{ vars.DUSTWAVE_RELEASE_REPO || inputs.release_repository || github.repository }}
+          DUSTWAVE_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
           DUSTWAVE_TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY || secrets.TAURI_UPDATER_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
-          args=(--dmg --bundles app)
+          args=(--notarize --dmg --bundles app)
 
-          if [[ "${{ inputs.build_media_sidecars }}" == "true" && "${{ inputs.build_updater_artifacts }}" == "true" ]]; then
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            args=(--media --updater "${args[@]}")
+          elif [[ "${{ inputs.build_media_sidecars }}" == "true" && "${{ inputs.build_updater_artifacts }}" == "true" ]]; then
             args=(--media --updater "${args[@]}")
           elif [[ "${{ inputs.build_media_sidecars }}" == "true" ]]; then
             args=(--media "${args[@]}")
@@ -159,6 +188,18 @@ jobs:
           fi
 
           node scripts/build-macos-release.mjs "${args[@]}"
+
+      - name: Notarize and staple release DMG
+        run: npm run desktop:macos:notarize
+
+      - name: Verify release artifacts
+        run: |
+          set -euo pipefail
+          args=(--require-stapled)
+          if [[ "${{ github.ref_type }}" == "tag" || "${{ inputs.build_updater_artifacts }}" == "true" ]]; then
+            args+=(--require-updater)
+          fi
+          npm run desktop:release:artifact-check -- "${args[@]}"
 
       - name: Zip macOS app
         run: ditto -c -k --keepParent "src-tauri/target/release/bundle/macos/Dust Wave Social.app" "src-tauri/target/release/bundle/macos/Dust Wave Social.app.zip"
@@ -178,7 +219,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload updater artifacts
-        if: inputs.build_updater_artifacts == 'true'
+        if: github.ref_type == 'tag' || inputs.build_updater_artifacts == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: dust-wave-social-updater-artifacts
@@ -188,14 +229,15 @@ jobs:
             src-tauri/target/release/bundle/latest.json
           if-no-files-found: error
 
-      - name: Create draft GitHub release
-        if: inputs.publish_release == 'true'
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag' || inputs.publish_release == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
         run: |
           set -euo pipefail
-          tag="${RELEASE_TAG:-desktop-${GITHUB_RUN_NUMBER}}"
+          tag="$RELEASE_TAG"
+          npm run desktop:release:version:check -- --tag "$tag"
           shopt -s nullglob
           artifacts=(
             src-tauri/target/release/bundle/dmg/*.dmg
@@ -204,4 +246,50 @@ jobs:
             src-tauri/target/release/bundle/macos/*.tar.gz.sig
             src-tauri/target/release/bundle/latest.json
           )
-          gh release create "$tag" "${artifacts[@]}" --draft --title "Dust Wave Social $tag"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${artifacts[@]}" --clobber
+            gh release edit "$tag" --draft=false --prerelease=false --title "Dust Wave Social $tag"
+          else
+            gh release create "$tag" "${artifacts[@]}" --verify-tag --generate-notes --title "Dust Wave Social $tag"
+          fi
+
+      - name: Verify published updater asset
+        if: github.ref_type == 'tag' || inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          published_dir="$RUNNER_TEMP/dust-wave-published-release"
+          mkdir -p "$published_dir"
+          gh release download "$RELEASE_TAG" --pattern latest.json --dir "$published_dir" --clobber
+          cmp src-tauri/target/release/bundle/latest.json "$published_dir/latest.json"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,url,assets
+
+      - name: Smoke published updater
+        if: github.ref_type == 'tag' || inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(gh release list --limit 20 --json tagName,isDraft,isPrerelease --jq '.[] | select(.isDraft == false and .isPrerelease == false) | .tagName' | grep -Fxv "$RELEASE_TAG" | head -n 1 || true)"
+
+          if [[ -z "$previous_tag" ]]; then
+            for attempt in 1 2 3 4; do
+              if npm run desktop:smoke:updater -- --mode download; then
+                exit 0
+              fi
+              if [[ "$attempt" == "4" ]]; then
+                exit 1
+              fi
+              sleep 15
+            done
+          fi
+
+          previous_dir="$RUNNER_TEMP/dust-wave-previous-release"
+          mkdir -p "$previous_dir"
+          gh release download "$previous_tag" --pattern 'Dust Wave Social.app.tar.gz' --dir "$previous_dir" --clobber
+          tar -xzf "$previous_dir/Dust Wave Social.app.tar.gz" -C "$previous_dir"
+          npm run desktop:smoke:updater -- --mode install --app "$previous_dir/Dust Wave Social.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$previous_dir/Dust Wave Social.app/Contents/Info.plist")" = "${RELEASE_TAG#v}"

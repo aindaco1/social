@@ -25,7 +25,7 @@ const appPath = path.resolve(
     projectRoot,
     argValue('--app') || 'src-tauri/target/release/bundle/macos/Dust Wave Social.app'
 );
-const seconds = Math.max(3, Number(argValue('--seconds')) || 8);
+const seconds = Math.max(3, Number(argValue('--seconds')) || 15);
 
 if (!existsSync(appPath)) {
     console.error(`Packaged app not found: ${appPath}`);
@@ -45,50 +45,65 @@ if (executableNameResult.status !== 0) {
 
 const executableName = String(executableNameResult.stdout || '').trim();
 const executablePath = path.join(appPath, 'Contents', 'MacOS', executableName);
+const bundleVersionResult = spawnSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plistPath], {
+    encoding: 'utf8',
+    stdio: 'pipe',
+});
+const bundleVersion = String(bundleVersionResult.stdout || '').trim();
 
 if (!existsSync(executablePath)) {
     console.error(`Packaged app executable not found: ${executablePath}`);
     process.exit(1);
 }
 
-const tempHome = await mkdtemp(path.join(os.tmpdir(), 'dust-wave-social-smoke-'));
-const outputPath = path.join(tempHome, 'app.log');
-const output = await import('node:fs').then((fs) => fs.createWriteStream(outputPath));
+const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'dust-wave-social-smoke-'));
+const reportPath = path.join(tempRoot, 'report.json');
 const child = spawn(executablePath, [], {
     cwd: projectRoot,
     env: {
         ...process.env,
-        HOME: tempHome,
+        DUSTWAVE_DESKTOP_SMOKE: 'launch',
+        DUSTWAVE_DESKTOP_SMOKE_DELAY_MS: '1500',
+        DUSTWAVE_DESKTOP_SMOKE_REPORT: reportPath,
         RUST_BACKTRACE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
 });
+let output = '';
 
-child.stdout.pipe(output);
-child.stderr.pipe(output);
-
-let exited = false;
-let exitCode = null;
-child.on('exit', (code) => {
-    exited = true;
-    exitCode = code;
+child.stdout.on('data', (chunk) => {
+    output += chunk;
+});
+child.stderr.on('data', (chunk) => {
+    output += chunk;
 });
 
-await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+try {
+    const exitCode = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            child.kill();
+            reject(new Error(`Packaged app launch smoke timed out after ${seconds}s.`));
+        }, seconds * 1000);
 
-if (exited) {
-    const contents = await readFile(outputPath, 'utf8').catch(() => '');
-    await rm(tempHome, { recursive: true, force: true });
-    console.error(`Packaged app exited before ${seconds}s with status ${exitCode ?? 'unknown'}.`);
+        child.once('error', (error) => {
+            clearTimeout(timeout);
+            reject(error);
+        });
+        child.once('exit', (code) => {
+            clearTimeout(timeout);
+            resolve(code ?? 1);
+        });
+    });
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
 
-    if (contents.trim()) {
-        console.error(contents.trim().split('\n').slice(0, 80).join('\n'));
+    if (exitCode !== 0 || !report.ok || report.kind !== 'launch' || report.package_version !== bundleVersion) {
+        throw new Error(`Packaged app launch smoke failed: ${JSON.stringify(report)}${output.trim() ? `\n${output.trim()}` : ''}`);
     }
 
-    process.exit(exitCode || 1);
+    console.log(`Packaged app launch smoke passed for ${report.package_version}.`);
+} finally {
+    if (!child.killed && child.exitCode === null) {
+        child.kill();
+    }
+    await rm(tempRoot, { recursive: true, force: true });
 }
-
-child.kill();
-await new Promise((resolve) => child.once('exit', resolve));
-await rm(tempHome, { recursive: true, force: true });
-console.log(`Packaged app stayed running for ${seconds}s.`);

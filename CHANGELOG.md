@@ -1,6 +1,17 @@
 # Changelog
 
-All notable changes to `mixpost` will be documented in this file.
+Dust Wave Social desktop releases are tracked separately from the retained Mixpost Lite history below.
+
+Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
+
+## 0.1.0 - 2026-08-18
+
+- First local-first Apple Silicon macOS desktop release.
+- Current capabilities and limits are documented in `docs/FEATURES.md`.
+- Current launch gates and artifact state are documented in `docs/MVP_LAUNCH_PLAN.md`.
+- The release pipeline signs and notarizes the app and DMG, staples both artifacts, verifies the drag-to-Applications layout, signs updater archives, validates release-tag/version alignment, and smokes the updater against the published release.
+
+The entries below are the retained Mixpost Lite release history.
 
 ## 2.6.0 - 2026-03-16
 

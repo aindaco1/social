@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdir, rm, symlink } from 'node:fs/promises';
+import { copyFile, mkdir, rm, symlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -111,6 +111,14 @@ if (result.status !== 0) {
 }
 
 await symlink('/Applications', path.join(stagingDirectory, 'Applications'));
+const appIconPath = path.join(appPath, 'Contents', 'Resources', 'icon.icns');
+
+if (!existsSync(appIconPath)) {
+    await rm(stagingDirectory, { force: true, recursive: true });
+    fail(`App volume icon not found at ${redactPath(appIconPath)}.`);
+}
+
+await copyFile(appIconPath, path.join(stagingDirectory, '.VolumeIcon.icns'));
 
 console.log(`Creating DMG: ${redactPath(outputPath)}`);
 result = run('hdiutil', [

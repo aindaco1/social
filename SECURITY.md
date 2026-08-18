@@ -4,7 +4,7 @@ Dust Wave Social handles social-provider credentials, local account data, media,
 
 ## Reporting a Vulnerability
 
-Do not open a public issue for a vulnerability or active abuse path. Report it privately to the Dust Wave maintainer responsible for this repository. If that contact is not available, use the original Mixpost security contact until the repository metadata is updated: dima@inovector.com.
+Do not open a public issue for a vulnerability or active abuse path. Report it privately to the Dust Wave maintainer responsible for this repository, or use GitHub private vulnerability reporting for `aindaco1/social` when that channel is enabled.
 
 Include:
 

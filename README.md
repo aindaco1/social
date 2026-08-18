@@ -1,103 +1,96 @@
-[<img src="./art/standwithua.png" />](https://supportukrainenow.org)
+# Dust Wave Social
 
-* * *
+Dust Wave Social is a local-first social publishing and reporting app for Apple Silicon macOS. It is built with Tauri, Rust, Vue, and SQLite, and keeps provider credentials in the macOS Keychain instead of the local database.
 
-[<img src="./art/page-cover.png" alt="Cover" />](https://mixpost.app)
+The repository also retains the original Mixpost Lite Laravel package while the desktop replacement completes live-provider and release acceptance. The desktop app does not require the Laravel server for normal operation.
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/inovector/mixpost.svg?style=flat-square)](https://packagist.org/packages/inovector/mixpost)
-[![GitHub Tests Action Status](https://img.shields.io/github/workflow/status/inovector/mixpost/run-tests?label=tests)](https://github.com/inovector/mixpost/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/inovector/mixpost.svg?style=flat-square)](https://packagist.org/packages/inovector/mixpost)
+## Current status
 
-## Dust Wave Desktop Notes
+The desktop implementation and supporting infrastructure are substantially complete. Public release is still gated on production provider credentials, real-account acceptance, packaged local-AI review, a clean-Mac install, an updater test, and final release approval.
 
-This repository also contains the Dust Wave Social Tauri/Rust desktop migration work. Current Dust Wave planning and operating docs:
+Run the current readiness audit instead of copying status counts into another document:
 
-- [Migration plan](DUSTWAVE_MIGRATION.md)
-- [Mixpost parity audit](MIXPOST_PARITY_AUDIT.md)
-- [Canonical MVP launch plan](docs/MVP_LAUNCH_PLAN.md)
-- [Product and ethical best practices](docs/BEST_PRACTICES.md)
+```sh
+npm run mvp:launch:readiness
+```
+
+The launch source of truth is [docs/MVP_LAUNCH_PLAN.md](docs/MVP_LAUNCH_PLAN.md). It records the current artifact state, manual acceptance gates, release commands, and rollback procedure.
+
+## Product capabilities
+
+- Manage X/Twitter, Facebook Page, Instagram, Mastodon, and TikTok accounts from one desktop app.
+- Draft, preview, validate, schedule, publish, duplicate, filter, retry, and bulk-delete posts.
+- Use account-specific post versions, labels, local media, stock media, and transient Klipy GIF references.
+- Review scheduled work in month, day, and week calendar views.
+- Import provider audience and post metrics into local dashboards and reports.
+- Run durable publishing and import jobs with rate-limit deferral and failure recovery while the app is open.
+- Store app state in SQLite, media in the app-data directory, and secrets in the macOS Keychain.
+- Back up and restore app data, inspect redacted logs, receive desktop notifications, and install signed updates.
+- Use opt-in, on-device media tools for image upscaling, quality preflight, crop suggestions, local media search, and editable alt-text drafts.
+
+See [docs/FEATURES.md](docs/FEATURES.md) for the provider matrix, current limitations, and deferred work.
+
+## Development
+
+Prerequisites:
+
+- Apple Silicon macOS for the supported MVP packaging path.
+- Node.js and npm.
+- Rust and Cargo.
+- The platform prerequisites required by Tauri v2.
+- PHP and Composer only when working on the retained Mixpost package.
+
+Install dependencies and run the desktop app:
+
+```sh
+npm ci
+npm run desktop:dev
+```
+
+Run the release-oriented verification suite:
+
+```sh
+npm run desktop:release:check
+```
+
+Run the legacy Mixpost asset build or PHP tests only when changing that package:
+
+```sh
+npm run build
+composer test
+```
+
+## Repository map
+
+- `resources/desktop/`: Vue desktop interface and bundled local-AI assets.
+- `src-tauri/`: Rust commands, provider adapters, SQLite repositories, migrations, packaging, and permissions.
+- `workers/tiktok-broker/`: Cloudflare Worker that isolates TikTok OAuth secrets and imports analytics.
+- `workers/media-staging/`: Cloudflare Worker and R2 binding for temporary Instagram media URLs.
+- `scripts/`: build, release, signing, notarization, updater, provider setup, and readiness automation.
+- `src/`, `resources/js/`, `routes/`, `database/`, and `tests/`: retained Mixpost Lite package.
+
+## Documentation
+
+- [Features and limits](docs/FEATURES.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [MVP launch and release operations](docs/MVP_LAUNCH_PLAN.md)
+- [Local AI media](docs/LOCAL_AI.md)
+- [GIF provider decision](docs/GIF_PROVIDER_DECISION.md)
+- [Product and ethical safeguards](docs/BEST_PRACTICES.md)
 - [Support runbook](docs/SUPPORT_RUNBOOK.md)
 - [Security policy](SECURITY.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Changelog](CHANGELOG.md)
 
-## Introduction
+Validate the documentation structure and relative links after changing docs:
 
-Mixpost is a robust and versatile **social media management platform**, designed to streamline **social media operations** and enhance **content marketing strategies**. Our platform empowers brands and businesses to effectively manage their **online presence**, leading them to success in the dynamic digital landscape. Mixpost's mission is to offer a comprehensive and powerful solution, enabling users to elevate their **social media management** and achieve tangible results.
+```sh
+npm run docs:check
+npm run mvp:release:notes:check
+```
 
-The platform allows users to craft, organize, and schedule their content for times when their audience is most engaged and active. Mixpost's user-friendly **scheduling system** ensures that content publishing is seamless and efficient. It also facilitates team collaboration by allowing users to assign tasks, manage permissions, and monitor team performance, optimizing team interactions and workflow. Additionally, Mixpost automates post scheduling to ensure maximum audience reach and engagement, significantly boosting interaction and customer engagement.
+## Project boundaries
 
-Trusted by a wide range of users, Mixpost stands out as a proficient and influential tool for social media management and content marketing. It is perfectly suited for enterprises, small to medium businesses, marketing agencies, solopreneurs, and e-commerce stores.
+The MVP targets Apple Silicon macOS. TikTok direct API publishing, richer Instagram formats, Facebook Groups, Intel/universal builds, cloud sync, and team collaboration are not part of the current release scope.
 
-**_Highlighting Features of Mixpost_**
-
-**Mixpost** offers a multitude of features, making **social media management** more effective and simpler:
-
-**Streamlined Social Account Management:**
-Bring all your social media accounts together in one place for smarter and more efficient management.
-
-**Advanced Analytics:**
-Gain insights into your audience's behavior and preferences. Mixpost provides detailed analytics, for each platform according to the data shared. We do our best to make sure our API integrations are up to date, to provide seamless analytics experience accross all social media platforms.
-
-**Post Versions and Conditions:**
-Tailor your content for each social network and automate follow-up comments on high-performing posts, enhancing engagement and reach.
-
-**Efficient Media Library:**
-Quickly access and reuse media files like images, GIFs, and videos, and integrate with stock image sources for a diverse range of content.
-
-**Team Collaboration and Workspaces:**
-Foster team collaboration with dedicated workspaces. Discuss ideas, manage tasks, and monitor performance, all from a centralized platform.
-
-**Queue and Calendar Management:**
-Build a natural content posting schedule and visualize your strategy with an easy-to-use calendar.
-
-**Customizable Post Templates:**
-Boost efficiency with reusable post templates, perfect for maintaining consistency across your social media channels.
-
-**Dynamic Variables and Hashtag Groups:**
-Insert dynamic text and organize your hashtags strategically for increased post effectiveness.
-And many more features that make Mixpost a standout choice for managing social media and content marketing. Discover all the features in detail at Mixpost Features.
-
-It is the ideal social media management software for bloggers, artisans, entrepreneurs, and marketing teams looking to optimize internal costs.
-
-**[Unlock the full potential of Mixpost with Mixpost Pro/Enterprise](https://mixpost.app/pricing)**
-
-Join our community:
-
-- [Discord](https://mixpost.app/discord)
-- [Facebook Private Group](https://www.facebook.com/groups/getmixpost)
-
-[<img src="./art/demo.png" />](https://mixpost.app)
-
-## Installation
-
-Read our [documentation](https://docs.mixpost.app/lite/) on how to get started.
-
-## Changelog
-
-Please see [Releases](../../releases) for more information what has changed recently.
-
-## Contributing
-
-By participating in this project, you agree to the following terms 👇
-
-This repository contains the Lite version of Mixpost Pro, a [commercial product](https://mixpost.app/) product. We’re committed to providing the community with the best free social media management solution. Please read the information below carefully.
-
-- If you’d like to add a feature, please open an issue first to discuss it before you begin coding. It’s essential that Lite version features remain distinct from those in Mixpost Pro.
-- Pull requests (PRs) for optimizations and bug fixes are always welcome.
-- Make sure your commit messages and pull request descriptions are clear and informative. PRs with empty descriptions may be rejected.
-- When contributing code to Mixpost, you must follow
-  the [PSR-12 Coding Standard](https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-12-extended-coding-style-guide.md).
-
-The golden rule is: Imitate the existing Mixpost code.
-
-## Security Vulnerabilities
-
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
-
-## Credits
-
-- [Dima Botezatu](https://github.com/lao9s)
-- [All Contributors](../../contributors)
-
-## License
-
-Mixpost is licensed under the [MIT License](LICENSE.md), sponsored and supported by [Inovector](https://inovector.com).
+Mixpost-originated PHP code remains MIT licensed under [LICENSE.md](LICENSE.md). Dust Wave release bundles must also comply with the notices and redistribution requirements in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

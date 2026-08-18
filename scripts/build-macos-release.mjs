@@ -59,6 +59,11 @@ async function ensureSafeDarwinTarget() {
         currentTarget = null;
     }
 
+    if (currentTarget?.isSymbolicLink() && !fileExists(projectTargetPath)) {
+        await rm(projectTargetPath, { force: true });
+        currentTarget = null;
+    }
+
     if (!currentTarget?.isSymbolicLink()) {
         if (fileExists(projectTargetPath)) {
             await rm(projectTargetPath, {

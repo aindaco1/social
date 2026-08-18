@@ -136,10 +136,12 @@ function readinessLines() {
     const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
     const lines = output.split(/\r?\n/).filter(Boolean);
     const summary = lines.find((line) => line.startsWith('MVP readiness:')) || 'MVP readiness: not checked.';
+    const blocked = lines.filter((line) => line.startsWith('[blocked]'));
     const manual = lines.filter((line) => line.startsWith('[manual]'));
 
     return {
         summary,
+        blocked: blocked.length > 0 ? blocked : ['[blocked] No blocking items were reported by the readiness script.'],
         manual: manual.length > 0 ? manual : ['[manual] No manual items were reported by the readiness script.'],
     };
 }
@@ -171,12 +173,22 @@ function renderNotes() {
     const sourceState = releaseSourceState();
     const submissionId = currentNotarizationId();
     const dmgPath = releaseDmgPath(productName, version);
-    const generatedAt = existsSync(dmgPath) ? statSync(dmgPath).mtime.toISOString() : new Date().toISOString();
+    const generatedAt = existsSync(dmgPath)
+        ? statSync(dmgPath).mtime.toISOString()
+        : 'not generated; no local DMG';
     const latestJsonPath = path.join(projectRoot, 'src-tauri', 'target', 'release', 'bundle', 'latest.json');
     const updaterArchivePath = path.join(projectRoot, 'src-tauri', 'target', 'release', 'bundle', 'macos', `${productName}.app.tar.gz`);
     const updaterSignaturePath = `${updaterArchivePath}.sig`;
     const latest = latestJsonSummary(latestJsonPath);
+    const completeArtifactSet = [dmgPath, latestJsonPath, updaterArchivePath, updaterSignaturePath]
+        .every((filePath) => existsSync(filePath));
+    const releaseState = completeArtifactSet
+        ? 'complete local Apple Silicon artifact set present; verify signing, notarization, stapling, and smoke launch before publication.'
+        : 'no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.';
     const readiness = readinessLines();
+    const blockedItems = readiness.blocked
+        .map((line) => `- ${line.replace(/^\[blocked\]\s*/, '')}`)
+        .join('\n');
     const manualItems = readiness.manual
         .map((line) => `- ${line.replace(/^\[manual]\s*/, '')}`)
         .join('\n');
@@ -188,12 +200,12 @@ Generated: ${generatedAt}
 
 Repository: \`${repo}\`
 Source state: ${sourceState}
-Release state: signed and notarized local Apple Silicon candidate; public GitHub Release still requires operator approval.
+Release state: ${releaseState}
 
 ## Artifacts
 
-${artifactSummary('Stapled Apple Silicon DMG', dmgPath)}
-- Apple notarization submission: \`${submissionId || 'not recorded'}\`
+${artifactSummary('Apple Silicon DMG', dmgPath)}
+- Recorded notarization submission (verify it matches this DMG): \`${submissionId || 'not recorded'}\`
 ${artifactSummary('Tauri updater latest.json', latestJsonPath, { checksum: false })}
 ${artifactSummary('Tauri updater archive', updaterArchivePath)}
 ${artifactSummary('Tauri updater signature', updaterSignaturePath, { checksum: false })}
@@ -201,27 +213,13 @@ ${artifactSummary('Tauri updater signature', updaterSignaturePath, { checksum: f
 - Updater URL: ${latest.url ? `\`${latest.url}\`` : 'not generated'}
 - Updater signature embedded in latest.json: ${latest.signaturePresent ? 'yes' : 'no'}
 
-## MVP Scope
-
-- Apple Silicon macOS desktop app for managing Dust Wave social accounts.
-- First-class account, publishing, scheduling, import, reporting, and failure-state flows for X/Twitter, Facebook Pages, Instagram, Mastodon, and TikTok-assisted workflows where credentials and provider approvals allow.
-- Cloudflare R2 media staging for Instagram local-image publishing, with temporary public HTTPS URLs and scheduled expired-object cleanup.
-- TikTok broker-backed analytics scaffold with the desktop app storing only broker-safe account credentials.
-- Local media library, Mixpost-parity post workflows, reports, backup/restore, desktop notifications, and support exports.
-- Local AI Media Labs behind a setting: bundled LiteRT.js runtime, bundled model weights, model-backed upscaling derivatives, media preflight, smart crops, local media search, and review-required alt-text drafts.
-
-## Important Limits
-
-- Provider portals, production credentials, provider app review, live posting acceptance, and real account onboarding are still manual.
-- TikTok direct API publishing remains approval-gated; MVP uses assisted publishing unless TikTok approves stronger publishing scopes.
-- Instagram requires professional Business or Creator accounts connected to the required Meta/Page assets.
-- Apple Silicon macOS is the MVP target. Intel/universal macOS builds are out of scope.
-- Klipy GIFs are provider references and transient publish-time assets unless Klipy grants written permission for permanent media-library imports.
-- Gambado font redistribution rights still need final human confirmation before broader public distribution.
-
 ## Readiness Snapshot
 
 ${readiness.summary}
+
+Blocking issues:
+
+${blockedItems}
 
 Manual acceptance still required:
 

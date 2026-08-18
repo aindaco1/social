@@ -51,6 +51,7 @@ const releaseRepository = argValue('--repo')
     || gitRemoteRepoSlug(projectRoot);
 const platform = argValue('--platform') || hostPlatformKey();
 const version = argValue('--version') || await tauriVersion();
+const releaseTag = argValue('--tag') || envValue('DUSTWAVE_RELEASE_TAG') || `v${version}`;
 const artifactPath = path.resolve(
     projectRoot,
     argValue('--artifact') || 'src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz',
@@ -61,6 +62,10 @@ const outputPath = path.resolve(
     argValue('--output') || 'src-tauri/target/release/bundle/latest.json',
 );
 const notes = argValue('--notes') || envValue('DUSTWAVE_RELEASE_NOTES') || `Dust Wave Social ${version}`;
+
+if (releaseTag !== `v${version}`) {
+    fail(`Updater release tag ${releaseTag} does not match version ${version}; expected v${version}.`);
+}
 
 if (!releaseRepository) {
     fail('Missing release repository. Set DUSTWAVE_RELEASE_REPO=owner/repo or use --repo owner/repo.');
@@ -88,7 +93,7 @@ const manifest = {
     platforms: {
         [platform]: {
             signature,
-            url: `https://github.com/${releaseRepository}/releases/latest/download/${encodeURIComponent(artifactName)}`,
+            url: `https://github.com/${releaseRepository}/releases/download/${encodeURIComponent(releaseTag)}/${encodeURIComponent(artifactName)}`,
         },
     },
 };

@@ -189,6 +189,67 @@ function releaseNotesAndRollbackReady() {
         && (!submissionId || notesSource.includes(submissionId));
 }
 
+function localReleaseArtifactSetReady() {
+    const tauriSource = fileText('src-tauri/tauri.conf.json');
+
+    if (!tauriSource) {
+        return false;
+    }
+
+    try {
+        const tauri = JSON.parse(tauriSource);
+        const productName = tauri.productName || 'Dust Wave Social';
+        const version = tauri.version || '0.1.0';
+        const bundle = path.join(projectRoot, 'src-tauri', 'target', 'release', 'bundle');
+        const files = [
+            path.join(bundle, 'dmg', `${productName}_${version}_aarch64.dmg`),
+            path.join(bundle, 'latest.json'),
+            path.join(bundle, 'macos', `${productName}.app.tar.gz`),
+            path.join(bundle, 'macos', `${productName}.app.tar.gz.sig`),
+        ];
+
+        return files.every((filePath) => existsSync(filePath));
+    } catch {
+        return false;
+    }
+}
+
+function currentReleaseDmgPath() {
+    const tauriSource = fileText('src-tauri/tauri.conf.json');
+
+    if (!tauriSource) {
+        return '';
+    }
+
+    try {
+        const tauri = JSON.parse(tauriSource);
+        const productName = tauri.productName || 'Dust Wave Social';
+        const version = tauri.version || '0.1.0';
+
+        return path.join(
+            projectRoot,
+            'src-tauri',
+            'target',
+            'release',
+            'bundle',
+            'dmg',
+            `${productName}_${version}_aarch64.dmg`,
+        );
+    } catch {
+        return '';
+    }
+}
+
+function currentReleaseCandidateStapled() {
+    const dmgPath = currentReleaseDmgPath();
+
+    if (!dmgPath || !existsSync(dmgPath) || process.platform !== 'darwin') {
+        return false;
+    }
+
+    return run('/usr/bin/xcrun', ['stapler', 'validate', dmgPath]).status === 0;
+}
+
 function notarizationStatus(submissionId) {
     if (!submissionId || process.platform !== 'darwin') {
         return '';
@@ -299,6 +360,20 @@ record(
 );
 
 record(
+    localReleaseArtifactSetReady() ? 'ready' : 'blocked',
+    'Local release artifact set',
+    'DMG, latest.json, updater archive, and updater signature under src-tauri/target/release/bundle',
+);
+
+record(
+    currentReleaseCandidateStapled() ? 'ready' : 'manual',
+    'Current release candidate notarization and stapling',
+    currentReleaseDmgPath()
+        ? 'submit the current DMG to Apple, wait for acceptance, staple it, and rerun strict artifact verification'
+        : 'build the local release artifact set first',
+);
+
+record(
     'manual',
     'Media Staging token saved in desktop Services and Instagram local-media acceptance',
     'requires launch Mac Keychain entry and live Instagram publish validation',
@@ -329,7 +404,7 @@ const documentedAccepted = documentedNotarizationAccepted(submissionId);
 
 record(
     status === 'Accepted' || documentedAccepted ? 'ready' : 'manual',
-    'Apple notarization acceptance',
+    'Historical Apple notarization acceptance',
     status
         ? `${submissionId}: ${status}`
         : documentedAccepted

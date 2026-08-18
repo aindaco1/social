@@ -133,4 +133,4 @@ Flagged issues should be recorded in the issue tracker or release notes with an 
 - Keep the Ethical OS risk review in the finish-line checklist for every public release.
 - Assign owners for provider credentials, Apple credentials, release approval, backup policy, and emergency account disconnects.
 - Revisit this document after major provider API changes, new automation features, AI-assisted features, cloud sync, team collaboration, or new supported social networks.
-- Treat "full Mixpost parity" as the baseline, not the ceiling, for safe operations.
+- Treat the supported product surface in `FEATURES.md` as the baseline, not the ceiling, for safe operations.

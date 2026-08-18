@@ -1,3 +1,4 @@
+mod ci_smoke;
 mod commands;
 mod db;
 mod domain;
@@ -24,6 +25,7 @@ pub fn run() {
 
             let database = db::Database::initialize(app.handle())?;
             app.manage(database);
+            ci_smoke::maybe_spawn(app);
 
             Ok(())
         })

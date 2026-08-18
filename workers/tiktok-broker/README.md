@@ -9,7 +9,7 @@ This Worker keeps TikTok OAuth client secrets, refresh tokens, and access tokens
 - D1 database: created.
 - Initial migration: applied.
 - Generated secrets already stored in local `Apple Auth`, GitHub secrets, and Cloudflare Worker secrets: `TOKEN_ENCRYPTION_KEY`, `BROKER_ADMIN_TOKEN`.
-- Still required before live TikTok acceptance: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, TikTok OAuth callback registration, and a D1-capable `CLOUDFLARE_API_TOKEN` for GitHub Actions deploys.
+- Required before live TikTok acceptance: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, and TikTok OAuth callback registration. GitHub Actions deployment also requires a Cloudflare token with Workers and D1 permissions.
 
 ## Endpoints
 
@@ -115,6 +115,8 @@ npm run tiktok:broker:test
 ```
 
 The MVP scopes are `user.info.basic,user.info.stats,video.list`. Direct publishing still requires TikTok approval for `video.upload` or `video.publish`.
+
+Desktop provider limits and launch acceptance are documented in [../../docs/FEATURES.md](../../docs/FEATURES.md) and [../../docs/MVP_LAUNCH_PLAN.md](../../docs/MVP_LAUNCH_PLAN.md).
 
 ## Revocation
 
