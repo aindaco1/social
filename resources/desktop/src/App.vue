@@ -15,6 +15,7 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } fr
 import { COLOR_PALLET_LIST } from '@/Constants/ColorPallet';
 import Div from '@/Extensions/TipTap/Div';
 import dustWaveSquareLogoUrl from '@desktop/assets/dust-wave-square.png';
+import UpdateStatusButton from '@desktop/components/UpdateStatusButton.vue';
 
 const WORKER_POLL_MS = 60 * 1000;
 const MAINTENANCE_POLL_MS = 60 * 60 * 1000;
@@ -3422,7 +3423,7 @@ const installSoftwareUpdate = async () => {
     softwareUpdateInstalling.value = true;
     softwareUpdateError.value = '';
     softwareUpdateProgress.value = '';
-    softwareUpdateStatus.value = `Installing version ${update.version}`;
+    softwareUpdateStatus.value = `Downloading version ${update.version}`;
 
     try {
         await update.downloadAndInstall((event) => {
@@ -3430,21 +3431,25 @@ const installSoftwareUpdate = async () => {
                 totalBytes = Number(event.data.contentLength) || 0;
                 downloadedBytes = 0;
                 softwareUpdateProgress.value = totalBytes
-                    ? `Downloading ${formatBytes(totalBytes)}`
+                    ? 'Downloading 0%'
                     : 'Downloading update';
             }
 
             if (event.event === 'Progress') {
                 downloadedBytes += Number(event.data.chunkLength) || 0;
+                const percentage = totalBytes
+                    ? Math.min(100, Math.floor((downloadedBytes / totalBytes) * 100))
+                    : 0;
                 softwareUpdateProgress.value = totalBytes
-                    ? `Downloaded ${formatBytes(downloadedBytes)} of ${formatBytes(totalBytes)}`
+                    ? `Downloading ${percentage}% · ${formatBytes(downloadedBytes)} of ${formatBytes(totalBytes)}`
                     : `Downloaded ${formatBytes(downloadedBytes)}`;
             }
 
             if (event.event === 'Finished') {
-                softwareUpdateProgress.value = 'Download complete';
+                softwareUpdateProgress.value = 'Installing update';
+                softwareUpdateStatus.value = `Installing version ${update.version}`;
             }
-        }, { timeout: 120000 });
+        }, { timeout: 300000 });
 
         softwareUpdateStatus.value = 'Update installed. Restart Dust Wave Social to finish.';
         softwareUpdateAvailable.value = null;
@@ -3454,6 +3459,19 @@ const installSoftwareUpdate = async () => {
     } finally {
         softwareUpdateInstalling.value = false;
     }
+};
+
+const checkOrInstallSoftwareUpdate = async () => {
+    if (softwareUpdateChecking.value || softwareUpdateInstalling.value) {
+        return;
+    }
+
+    if (softwareUpdateAvailable.value) {
+        await installSoftwareUpdate();
+        return;
+    }
+
+    await checkSoftwareUpdate();
 };
 
 const exportSystemLog = async () => {
@@ -5438,12 +5456,23 @@ onUnmounted(() => {
 
         <section class="workspace">
             <header class="topbar">
-                <div>
+                <div class="topbar-copy">
                     <p class="section-label">{{ activeViewDefinition.section }}</p>
                     <h1>{{ activeViewDefinition.label }}</h1>
                     <p class="topbar-description">{{ activeViewDefinition.description }}</p>
                 </div>
-                <div class="status-pill">Local workspace</div>
+                <div class="topbar-actions">
+                    <UpdateStatusButton
+                        :checking="softwareUpdateChecking"
+                        :installing="softwareUpdateInstalling"
+                        :status="softwareUpdateStatus"
+                        :progress="softwareUpdateProgress"
+                        :error="softwareUpdateError"
+                        :available="softwareUpdateAvailable"
+                        @activate="checkOrInstallSoftwareUpdate"
+                    />
+                    <div class="status-pill">Local workspace</div>
+                </div>
             </header>
 
             <div v-if="loadError" class="error-panel">

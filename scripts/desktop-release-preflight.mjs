@@ -92,7 +92,7 @@ function releaseNotesGeneratorReady() {
 
     return /MVP_RELEASE_NOTES_START/.test(generatorSource)
         && /Rollback Plan/.test(generatorSource)
-        && /## Current Release Candidate/.test(notesSource)
+        && /## Current Local Release Artifacts/.test(notesSource)
         && /## Rollback Plan/.test(notesSource);
 }
 

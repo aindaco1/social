@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
     applicationsLinkTargetIsValid,
     validateMacosDmgLayout,
 } from './lib/macos-dmg.mjs';
 
 const roots = [];
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 async function layoutFixture() {
     const root = await mkdtemp(path.join(os.tmpdir(), 'dust-wave-dmg-layout-'));
@@ -21,6 +23,13 @@ async function layoutFixture() {
 }
 
 try {
+    const notarizationSource = await readFile(
+        path.join(scriptDirectory, 'notarize-macos-app.mjs'),
+        'utf8',
+    );
+    assert.match(notarizationSource, /tauriConfig\.version/);
+    assert.doesNotMatch(notarizationSource, /Dust Wave Social_0\.1\.0_aarch64\.dmg/);
+
     assert.equal(applicationsLinkTargetIsValid('/Applications', 'darwin'), true);
     assert.equal(applicationsLinkTargetIsValid('/tmp', 'darwin'), false);
 

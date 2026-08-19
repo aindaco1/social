@@ -18,7 +18,7 @@ The production desktop interface contains these first-class workflows:
 - Reports: provider-specific metrics, audience charts, period summaries, loading/empty/error states, and imported post performance.
 - Tags: create, edit, delete, color, filter, and composer assignment.
 - Settings and Profile: local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs.
-- System: health, background-work recovery, media-tool availability, logs, maintenance, backup/restore, app-data path, notifications, and signed updater controls.
+- System: health, background-work recovery, media-tool availability, logs, maintenance, backup/restore, app-data path, notifications, and detailed signed updater controls. A compact top-right updater action is available from every workflow and changes from check to install when a signed release is found.
 
 Migration, schema, release-readiness, raw database, provider-capability, and raw queue panels are intentionally excluded from the production UI.
 

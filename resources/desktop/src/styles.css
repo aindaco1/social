@@ -4515,6 +4515,89 @@ dd {
     border-bottom: 1px solid var(--dw-border);
 }
 
+.topbar-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 12px;
+    min-width: 0;
+    margin-left: auto;
+}
+
+.topbar-copy {
+    min-width: 0;
+}
+
+.topbar-update-control {
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    min-width: 0;
+}
+
+.topbar-update-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 32px;
+    padding: 0 10px;
+    color: var(--dw-ink-strong);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    background: var(--dw-surface-base);
+    border: 1px solid var(--dw-border-strong);
+    border-radius: var(--dw-radius);
+    box-shadow: var(--dw-shadow-soft);
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.topbar-update-button:hover:not(:disabled) {
+    background: var(--dw-surface-subtle);
+    border-color: var(--dw-ink-strong);
+    transform: translateY(-1px);
+}
+
+.topbar-update-button.is-active {
+    color: var(--dw-ink-strong);
+    background: var(--dw-accent);
+    border-color: var(--dw-ink-strong);
+}
+
+.topbar-update-button.is-error {
+    color: var(--dw-danger-dark);
+    background: var(--dw-danger-bg);
+    border-color: var(--dw-danger);
+}
+
+.topbar-update-icon {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.75;
+}
+
+.topbar-update-status {
+    max-width: 260px;
+    overflow: hidden;
+    color: var(--dw-ink-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.topbar-update-status.is-error {
+    color: var(--dw-danger-dark);
+}
+
 h1,
 h2,
 h3,
@@ -5127,6 +5210,25 @@ dd {
     .topbar,
     .panel-heading {
         flex-direction: column;
+    }
+
+    .topbar {
+        align-items: stretch;
+    }
+
+    .topbar-actions {
+        align-items: flex-start;
+        justify-content: space-between;
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .topbar-update-control {
+        justify-items: start;
+    }
+
+    .topbar-update-status {
+        text-align: left;
     }
 
     .dashboard-report-controls,

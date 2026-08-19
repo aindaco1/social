@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,13 +25,18 @@ const submissionId = submissionIdArgIndex >= 0 ? args[submissionIdArgIndex + 1] 
 const statusOnly = args.includes('--status') || args.includes('--info');
 const timeoutArgIndex = args.indexOf('--timeout');
 const waitTimeout = timeoutArgIndex >= 0 ? args[timeoutArgIndex + 1] : '30m';
+const tauriConfig = JSON.parse(
+    readFileSync(path.resolve(projectRoot, 'src-tauri/tauri.conf.json'), 'utf8'),
+);
+const productName = String(tauriConfig.productName || 'Dust Wave Social').trim();
+const appVersion = String(tauriConfig.version || '').trim();
 const defaultAppPath = path.resolve(
     projectRoot,
-    'src-tauri/target/release/bundle/macos/Dust Wave Social.app',
+    `src-tauri/target/release/bundle/macos/${productName}.app`,
 );
 const defaultDmgPath = path.resolve(
     projectRoot,
-    'src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.0_aarch64.dmg',
+    `src-tauri/target/release/bundle/dmg/${productName}_${appVersion}_aarch64.dmg`,
 );
 const artifactPath = path.resolve(
     projectRoot,

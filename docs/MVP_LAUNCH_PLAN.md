@@ -1,6 +1,6 @@
 # Dust Wave Social MVP Launch Plan
 
-Updated: 2026-08-18
+Updated: 2026-08-19
 
 Audience: Dust Wave operators and release maintainers preparing the Apple Silicon macOS release.
 
@@ -45,15 +45,15 @@ The generated section below describes local checkout artifacts, which may differ
 <!-- MVP_RELEASE_NOTES_START -->
 ## Current Local Release Artifacts
 
-Generated: 2026-08-18T18:59:33.350Z
+Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.0 exists; the checkout may include post-release changes
-Release state: complete local Apple Silicon artifact set present; verify it independently before using it for any later publication.
+Source state: generated from local worktree with uncommitted changes
+Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.0_aarch64.dmg` (45 MB, SHA-256 `87b737941272423a942d9237997c0574f23ee09ef80c63f6a9713af9a9e24633`)
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.1_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `e3ccda23-9df6-4a80-a517-a8e5bc47c09a`
 - Tauri updater latest.json: `src-tauri/target/release/bundle/latest.json` (698 B)
 - Tauri updater archive: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz` (44 MB, SHA-256 `2cbcdd571e12f4022650e2acf97e52eff78f0e6e2d9ad10a35119dbf9870bfb8`)
@@ -64,11 +64,11 @@ Release state: complete local Apple Silicon artifact set present; verify it inde
 
 ## Readiness Snapshot
 
-MVP readiness: 22 ready, 0 blocked, 13 manual.
+MVP readiness: 21 ready, 1 blocked, 13 manual.
 
 Blocking issues:
 
-- No blocking items were reported by the readiness script.
+- Local release artifact set - DMG, latest.json, updater archive, and updater signature under src-tauri/target/release/bundle
 
 Manual acceptance still required:
 

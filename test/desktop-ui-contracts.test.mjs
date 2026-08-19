@@ -9,6 +9,10 @@ const appSource = await readFile(
     path.join(projectRoot, 'resources', 'desktop', 'src', 'App.vue'),
     'utf8',
 );
+const updateStatusButtonSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'UpdateStatusButton.vue'),
+    'utf8',
+);
 
 function sourceBetween(start, end) {
     const startIndex = appSource.indexOf(start);
@@ -76,4 +80,19 @@ test('local AI media labs are opt-in and use bundled LiteRT assets', () => {
     assert.ok(appSource.includes('cancelLocalAiOperation'));
     assert.ok(appSource.includes("invoke('local_ai_media_search'"));
     assert.ok(appSource.includes('Semantic media search'));
+});
+
+test('topbar updater uses the Podcast Visualizer icon and compact check-or-install flow', () => {
+    const updateAction = sourceBetween('const checkOrInstallSoftwareUpdate', 'const exportSystemLog');
+
+    assert.ok(appSource.includes("import UpdateStatusButton from '@desktop/components/UpdateStatusButton.vue'"));
+    assert.ok(appSource.includes('@activate="checkOrInstallSoftwareUpdate"'));
+    assert.ok(updateAction.includes('softwareUpdateAvailable.value'));
+    assert.ok(updateAction.includes('await installSoftwareUpdate()'));
+    assert.ok(updateAction.includes('await checkSoftwareUpdate()'));
+    assert.ok(appSource.includes('{ timeout: 300000 }'));
+    assert.ok(updateStatusButtonSource.includes('data-icon="arrow-down-circle"'));
+    assert.ok(updateStatusButtonSource.includes("return props.available ? 'Install' : 'Update'"));
+    assert.ok(updateStatusButtonSource.includes(':aria-label="actionDescription"'));
+    assert.ok(updateStatusButtonSource.includes(':aria-busy="busy"'));
 });
