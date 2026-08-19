@@ -53,7 +53,7 @@ Release state: no complete local release candidate; recover or rebuild the missi
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.1_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.2_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `e3ccda23-9df6-4a80-a517-a8e5bc47c09a`
 - Tauri updater latest.json: `src-tauri/target/release/bundle/latest.json` (698 B)
 - Tauri updater archive: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz` (44 MB, SHA-256 `2cbcdd571e12f4022650e2acf97e52eff78f0e6e2d9ad10a35119dbf9870bfb8`)

@@ -30,6 +30,17 @@ try {
     assert.match(notarizationSource, /tauriConfig\.version/);
     assert.doesNotMatch(notarizationSource, /Dust Wave Social_0\.1\.0_aarch64\.dmg/);
 
+    const updaterSmokeSource = await readFile(
+        path.join(scriptDirectory, 'smoke-updater-macos.mjs'),
+        'utf8',
+    );
+    const desktopWorkflowSource = await readFile(
+        path.resolve(scriptDirectory, '..', '.github/workflows/desktop.yml'),
+        'utf8',
+    );
+    assert.match(updaterSmokeSource, /plistValue\(plistPath, 'CFBundleShortVersionString'\)/);
+    assert.doesNotMatch(desktopWorkflowSource, /PlistBuddy.*previous_dir/);
+
     assert.equal(applicationsLinkTargetIsValid('/Applications', 'darwin'), true);
     assert.equal(applicationsLinkTargetIsValid('/tmp', 'darwin'), false);
 

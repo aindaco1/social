@@ -123,6 +123,14 @@ try {
         throw new Error(`Updater install smoke did not start installation: ${JSON.stringify(report)}`);
     }
 
+    if (mode !== 'download') {
+        const installedVersion = plistValue(plistPath, 'CFBundleShortVersionString');
+
+        if (installedVersion !== expectedVersion) {
+            throw new Error(`Updater install left staged app at ${installedVersion}; expected ${expectedVersion}.`);
+        }
+    }
+
     console.log(`Updater ${mode} smoke passed for ${report.package_version} -> ${report.update_version} (${report.downloaded_bytes} bytes).`);
 } finally {
     if (child && !child.killed && child.exitCode === null) {
