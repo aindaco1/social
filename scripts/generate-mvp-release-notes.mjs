@@ -91,17 +91,17 @@ function releaseSourceState(version) {
         return explicit;
     }
 
-    const dirty = run('git', ['status', '--porcelain']);
-
-    if (dirty.status === 0 && String(dirty.stdout || '').trim()) {
-        return 'generated from local worktree with uncommitted changes';
-    }
-
     const releaseTag = `v${version}`;
     const tag = run('git', ['rev-parse', '--verify', `refs/tags/${releaseTag}^{commit}`]);
 
-    return tag.status === 0
-        ? `release tag ${releaseTag} exists; the checkout may include post-release changes`
+    if (tag.status === 0) {
+        return `release tag ${releaseTag} exists; the checkout may include post-release changes`;
+    }
+
+    const dirty = run('git', ['status', '--porcelain']);
+
+    return dirty.status === 0 && String(dirty.stdout || '').trim()
+        ? 'generated from local worktree with uncommitted changes'
         : 'pending final release tag';
 }
 
@@ -117,7 +117,7 @@ function currentNotarizationId() {
     }
 
     const plan = readText('docs/MVP_LAUNCH_PLAN.md');
-    const match = plan.match(/Apple accepted submission `([0-9a-f-]{36})`/i);
+    const match = plan.match(/Apple accepted (?:DMG )?submission `([0-9a-f-]{36})`/i);
 
     return match?.[1] || '';
 }
@@ -252,7 +252,7 @@ ${manualItems}
 - Run \`npm run mvp:launch:readiness\` and confirm only expected manual acceptance items remain.
 - Complete live provider credential/account acceptance.
 - Complete clean-Mac Gatekeeper install.
-- Complete a higher-version updater draft release test.
+- Complete operator updater installation, relaunch, and app-data acceptance from the installed rollback version.
 - Finalize provider, backup, support, and release owners.
 - Publish only signed, stapled, checksum-recorded artifacts.
 ${sectionEnd}`;

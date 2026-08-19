@@ -392,11 +392,16 @@ for (const label of [
     'Unsplash live credential acceptance',
     'Klipy production key and attribution acceptance',
     'Dust Wave account onboarding and live publish/import acceptance',
-    'Updater higher-version draft release test',
     'Clean-Mac Gatekeeper install test',
 ]) {
     record('manual', label, 'requires provider portal, live account, or separate target Mac');
 }
+
+record(
+    'manual',
+    'Operator updater installation, relaunch, and app-data acceptance',
+    'requires the installed 0.1.0 app and representative app data on the target Mac',
+);
 
 const submissionId = currentNotarizationId();
 const status = notarizationStatus(submissionId);

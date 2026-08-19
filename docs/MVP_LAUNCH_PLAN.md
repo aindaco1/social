@@ -29,16 +29,17 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 ## Published release evidence
 
-[Dust Wave Social v0.1.0](https://github.com/aindaco1/social/releases/tag/v0.1.0) was published on 2026-08-18 from commit `00344046d9b4eecc6100eec9163531f91e31efd5` for Apple Silicon macOS.
+[Dust Wave Social v0.1.2](https://github.com/aindaco1/social/releases/tag/v0.1.2) was published on 2026-08-19 from commit `35907d73759f0641e486fee5317edeceeed447f9` for Apple Silicon macOS.
 
-- Apple accepted app submission `5ff76222-b5de-4150-b30c-cf77d2e9994f`.
-- Apple accepted submission `e3ccda23-9df6-4a80-a517-a8e5bc47c09a` for the DMG; stapler validation and Gatekeeper assessment passed.
-- Published DMG SHA-256: `ac5cb83fdf1b36a4b743ea141d8818c88670ac97fd71ee9414e188f4c13d2169`.
-- Published updater archive SHA-256: `01a3d89eb63563077a237a4ac2388e09ce0152b625a8a878a93a8f2367e65f0d`.
-- Published `latest.json` SHA-256: `58ec53879cf9b057064127d100a0be91d71987a9257422af7420df9f07399793`.
-- A packaged production app resolved the public manifest and downloaded and verified all 45,568,869 updater bytes.
+- Apple accepted app submission `c669e978-9992-4c4a-94b3-a62b5a57619c`.
+- Apple accepted DMG submission `637f68fc-ab52-4439-828a-a0b4ac2304ae`; stapler validation and Gatekeeper assessment passed.
+- Published DMG SHA-256: `818823915c39fbe9cde2574ee03f265a301c16ddc847aa26acad4f6adeaa2843`.
+- Published updater archive SHA-256: `66466db09d39c3e1ed1b2b919b5fb5ffa7ed402e1e04f35c9b82be95b90f4a3a`.
+- Published `latest.json` SHA-256: `c5a86595e663465a1bf79c419d0f1785489bb1fc479b80034a9a7d243c040c8f`.
+- The protected tag workflow downloaded the public 0.1.0 app, installed the signed 0.1.2 update, and verified the staged app bundle changed to 0.1.2 after downloading all 45,570,625 updater bytes.
+- An independent post-publication download reproduced the DMG and manifest hashes, validated the stapled ticket, passed Gatekeeper assessment, and fetched the updater archive directly over live HTTPS.
 
-The initial tag workflow exposed a GitHub asset-name normalization mismatch and a symlinked CI launch path in the final smoke. The release was immediately returned to draft, the manifest and harness were corrected, and the same notarized artifacts were republished only after the live updater download passed. Because 0.1.0 is the first release, a real previous-version installation hop remains open until 0.1.1 or later.
+The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
@@ -48,13 +49,13 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: generated from local worktree with uncommitted changes
+Source state: release tag v0.1.2 exists; the checkout may include post-release changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
 - Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.2_aarch64.dmg`
-- Recorded notarization submission (verify it matches this DMG): `e3ccda23-9df6-4a80-a517-a8e5bc47c09a`
+- Recorded notarization submission (verify it matches this DMG): `637f68fc-ab52-4439-828a-a0b4ac2304ae`
 - Tauri updater latest.json: `src-tauri/target/release/bundle/latest.json` (698 B)
 - Tauri updater archive: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz` (44 MB, SHA-256 `2cbcdd571e12f4022650e2acf97e52eff78f0e6e2d9ad10a35119dbf9870bfb8`)
 - Tauri updater signature: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig` (416 B)
@@ -83,8 +84,8 @@ Manual acceptance still required:
 - Unsplash live credential acceptance - requires provider portal, live account, or separate target Mac
 - Klipy production key and attribution acceptance - requires provider portal, live account, or separate target Mac
 - Dust Wave account onboarding and live publish/import acceptance - requires provider portal, live account, or separate target Mac
-- Updater higher-version draft release test - requires provider portal, live account, or separate target Mac
 - Clean-Mac Gatekeeper install test - requires provider portal, live account, or separate target Mac
+- Operator updater installation, relaunch, and app-data acceptance - requires the installed 0.1.0 app and representative app data on the target Mac
 
 ## Rollback Plan
 
@@ -106,7 +107,7 @@ Manual acceptance still required:
 - Run `npm run mvp:launch:readiness` and confirm only expected manual acceptance items remain.
 - Complete live provider credential/account acceptance.
 - Complete clean-Mac Gatekeeper install.
-- Complete a higher-version updater draft release test.
+- Complete operator updater installation, relaunch, and app-data acceptance from the installed rollback version.
 - Finalize provider, backup, support, and release owners.
 - Publish only signed, stapled, checksum-recorded artifacts.
 <!-- MVP_RELEASE_NOTES_END -->
@@ -122,7 +123,7 @@ Complete these in order:
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Publish and install a signed higher-version updater test with 0.1.1 or later.
+8. Complete hands-on update, relaunch, and app-data acceptance from an installed 0.1.0 app to 0.1.2.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
@@ -281,21 +282,21 @@ Use [SUPPORT_RUNBOOK.md](SUPPORT_RUNBOOK.md) for failure and incident procedures
 
 ## 8. Updater acceptance
 
-The 0.1.0 release passed public manifest resolution, signed archive download, and signature verification from the packaged app. Because it is the first published version, it cannot prove a previous-version-to-new-version installation hop.
+The protected 0.1.2 tag workflow passed public manifest resolution, downloaded the published 0.1.0 app archive, installed the signed 0.1.2 update into a canonical staged copy, and verified that copy's bundle version changed to 0.1.2. The release uses the same updater private key trusted by 0.1.0.
 
-For 0.1.1 or later:
+Operator acceptance remains:
 
-1. Build, sign, notarize, staple, and publish the higher version with the same updater private key.
-2. Let the tag workflow download the previous public app archive and perform the updater install.
-3. From an independently installed 0.1.0 app, check for updates in System.
-4. Download, install, and relaunch.
-5. Confirm the version changed and app data survived.
+1. From an independently installed 0.1.0 app, use the top-right Update action or the detailed controls in System.
+2. Confirm the action changes to Install for 0.1.2.
+3. Download, install, and relaunch.
+4. Confirm the version changed to 0.1.2 and app data survived.
+5. Record any timeout or relaunch failure before falling back to the published 0.1.2 DMG.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.
 
 ## 9. Final go/no-go
 
-Before treating 0.1.0 as operationally launch-ready, or publishing a later release, confirm:
+Before treating 0.1.2 as operationally launch-ready, or publishing a later release, confirm:
 
 - The generated local-artifact section names a complete, current artifact set when building a later release.
 - Strict artifact verification and packaged smoke launch pass.
@@ -304,7 +305,7 @@ Before treating 0.1.0 as operationally launch-ready, or publishing a later relea
 - Live publishing, scheduling, reports, and failure recovery pass.
 - Packaged Local AI Media acceptance passes.
 - Backup/restore, log redaction, and support procedures pass.
-- The higher-version updater test passes.
+- Operator updater installation, relaunch, and app-data acceptance pass on the target Mac.
 - Visual QA passes at 1024px, 1280px, and wide desktop widths against current Pool/Store design direction.
 - Gambado font redistribution rights are confirmed before broader public distribution.
 - The review in [BEST_PRACTICES.md](BEST_PRACTICES.md) has owners, mitigations, and ship/no-ship decisions for every red flag.
