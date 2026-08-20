@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { Update } from '@tauri-apps/plugin-updater';
+import { isProxy, shallowRef } from 'vue';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appSource = await readFile(
@@ -95,4 +97,23 @@ test('topbar updater uses the Podcast Visualizer icon and compact check-or-insta
     assert.ok(updateStatusButtonSource.includes("return props.available ? 'Install' : 'Update'"));
     assert.ok(updateStatusButtonSource.includes(':aria-label="actionDescription"'));
     assert.ok(updateStatusButtonSource.includes(':aria-busy="busy"'));
+});
+
+test('Tauri updater resources stay outside Vue deep-reactivity proxies', () => {
+    assert.match(appSource, /import\s*\{[^}]*\bshallowRef\b[^}]*\}\s*from 'vue'/);
+    assert.ok(appSource.includes('const softwareUpdateAvailable = shallowRef(null)'));
+    assert.equal(appSource.includes('const softwareUpdateAvailable = ref(null)'), false);
+
+    const update = new Update({
+        rid: 7,
+        currentVersion: '0.1.2',
+        version: '0.1.3',
+        date: null,
+        body: '',
+        rawJson: {},
+    });
+    const available = shallowRef(update);
+
+    assert.equal(isProxy(available.value), false);
+    assert.equal(available.value.rid, 7);
 });

@@ -4,6 +4,12 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.3 - 2026-08-19
+
+- Fixed in-app updates failing before download when Vue proxied Tauri's private updater resource.
+- Kept the updater resource shallow so both the top-right Update action and System install controls use the original signed Tauri object.
+- Added regression coverage for the private resource ID access that failed in versions 0.1.0 through 0.1.2.
+
 ## 0.1.0 - 2026-08-18
 
 - First local-first Apple Silicon macOS desktop release.

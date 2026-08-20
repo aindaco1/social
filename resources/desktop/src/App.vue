@@ -11,7 +11,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
 import Typography from '@tiptap/extension-typography';
 import { EditorContent, useEditor as useTipTapEditor } from '@tiptap/vue-3';
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { COLOR_PALLET_LIST } from '@/Constants/ColorPallet';
 import Div from '@/Extensions/TipTap/Div';
 import dustWaveSquareLogoUrl from '@desktop/assets/dust-wave-square.png';
@@ -660,7 +660,8 @@ const softwareUpdateInstalling = ref(false);
 const softwareUpdateStatus = ref(SOFTWARE_UPDATE_IDLE_STATUS);
 const softwareUpdateError = ref('');
 const softwareUpdateProgress = ref('');
-const softwareUpdateAvailable = ref(null);
+// Tauri updater resources carry private class state and must not be wrapped in a Vue proxy.
+const softwareUpdateAvailable = shallowRef(null);
 const settingsSaving = ref(false);
 const settingsError = ref('');
 const settingsSaved = ref(false);

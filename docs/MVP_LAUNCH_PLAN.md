@@ -41,6 +41,8 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
+Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 DMG over the existing app once; the following release will provide the first valid end-to-end UI updater acceptance hop.
+
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
 <!-- MVP_RELEASE_NOTES_START -->
@@ -49,19 +51,19 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.2 exists; the checkout may include post-release changes
+Source state: generated from local worktree with uncommitted changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.2_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.3_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `637f68fc-ab52-4439-828a-a0b4ac2304ae`
-- Tauri updater latest.json: `src-tauri/target/release/bundle/latest.json` (698 B)
-- Tauri updater archive: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz` (44 MB, SHA-256 `2cbcdd571e12f4022650e2acf97e52eff78f0e6e2d9ad10a35119dbf9870bfb8`)
-- Tauri updater signature: `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig` (416 B)
-- Updater version: `0.1.0`
-- Updater URL: `https://github.com/aindaco1/social/releases/download/v0.1.0/Dust.Wave.Social.app.tar.gz`
-- Updater signature embedded in latest.json: yes
+- Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
+- Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
+- Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
+- Updater version: `0.1.3`
+- Updater URL: not generated
+- Updater signature embedded in latest.json: no
 
 ## Readiness Snapshot
 
@@ -123,7 +125,7 @@ Complete these in order:
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Complete hands-on update, relaunch, and app-data acceptance from an installed 0.1.0 app to 0.1.2.
+8. Install the 0.1.3 hotfix DMG over an affected version, then complete hands-on update, relaunch, and app-data acceptance with the next release.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
@@ -282,21 +284,22 @@ Use [SUPPORT_RUNBOOK.md](SUPPORT_RUNBOOK.md) for failure and incident procedures
 
 ## 8. Updater acceptance
 
-The protected 0.1.2 tag workflow passed public manifest resolution, downloaded the published 0.1.0 app archive, installed the signed 0.1.2 update into a canonical staged copy, and verified that copy's bundle version changed to 0.1.2. The release uses the same updater private key trusted by 0.1.0.
+The protected 0.1.2 tag workflow passed public manifest resolution, downloaded the published 0.1.0 app archive, installed the signed 0.1.2 update into a canonical staged copy, and verified that copy's bundle version changed to 0.1.2. That Rust-side harness bypassed the Vue UI proxy that later failed during hands-on testing. The release uses the same updater private key trusted by 0.1.0.
 
 Operator acceptance remains:
 
-1. From an independently installed 0.1.0 app, use the top-right Update action or the detailed controls in System.
-2. Confirm the action changes to Install for 0.1.2.
-3. Download, install, and relaunch.
-4. Confirm the version changed to 0.1.2 and app data survived.
-5. Record any timeout or relaunch failure before falling back to the published 0.1.2 DMG.
+1. Back up representative app data from System.
+2. Install the signed and stapled 0.1.3 DMG over an installed 0.1.0 or 0.1.2 app without uninstalling first.
+3. Confirm the version changed to 0.1.3 and app data survived.
+4. Publish a later signed test release using the same updater private key.
+5. From 0.1.3, use the top-right Update action or the detailed controls in System to download, install, and relaunch.
+6. Confirm the version changed and app data survived before closing updater acceptance.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.
 
 ## 9. Final go/no-go
 
-Before treating 0.1.2 as operationally launch-ready, or publishing a later release, confirm:
+Before treating 0.1.3 as operationally launch-ready, or publishing a later release, confirm:
 
 - The generated local-artifact section names a complete, current artifact set when building a later release.
 - Strict artifact verification and packaged smoke launch pass.

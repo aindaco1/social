@@ -6,9 +6,9 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-Version 0.1.0 is published for Apple Silicon macOS as a signed, notarized, and stapled DMG. Its public updater manifest, archive, and signature have passed a real packaged-app download check.
+Version 0.1.2 is published for Apple Silicon macOS as a signed, notarized, and stapled DMG. A UI integration bug prevents versions 0.1.0 through 0.1.2 from completing an in-app install, so version 0.1.3 is the updater hotfix candidate and requires one manual DMG installation from those versions.
 
-That completes the production packaging and update-delivery gate, not the broader operational launch. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence. A true previous-version-to-new-version install hop will first be possible with 0.1.1 or later.
+The protected release workflow separately validates the signed Rust updater installation path. Version 0.1.3 adds UI-level coverage for the Vue/Tauri resource boundary; hands-on installation of the hotfix and the next in-app update hop remain operator acceptance items. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install also still require operator evidence.
 
 Run the current readiness audit instead of copying status counts into another document:
 
