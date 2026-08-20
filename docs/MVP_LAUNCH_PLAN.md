@@ -29,15 +29,15 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 ## Published release evidence
 
-[Dust Wave Social v0.1.2](https://github.com/aindaco1/social/releases/tag/v0.1.2) was published on 2026-08-19 from commit `35907d73759f0641e486fee5317edeceeed447f9` for Apple Silicon macOS.
+[Dust Wave Social v0.1.3](https://github.com/aindaco1/social/releases/tag/v0.1.3) was published on 2026-08-19 from commit `287fa6557dc2b00849694c44e9b38b9c9449bdcc` for Apple Silicon macOS.
 
-- Apple accepted app submission `c669e978-9992-4c4a-94b3-a62b5a57619c`.
-- Apple accepted DMG submission `637f68fc-ab52-4439-828a-a0b4ac2304ae`; stapler validation and Gatekeeper assessment passed.
-- Published DMG SHA-256: `818823915c39fbe9cde2574ee03f265a301c16ddc847aa26acad4f6adeaa2843`.
-- Published updater archive SHA-256: `66466db09d39c3e1ed1b2b919b5fb5ffa7ed402e1e04f35c9b82be95b90f4a3a`.
-- Published `latest.json` SHA-256: `c5a86595e663465a1bf79c419d0f1785489bb1fc479b80034a9a7d243c040c8f`.
-- The protected tag workflow downloaded the public 0.1.0 app, installed the signed 0.1.2 update, and verified the staged app bundle changed to 0.1.2 after downloading all 45,570,625 updater bytes.
-- An independent post-publication download reproduced the DMG and manifest hashes, validated the stapled ticket, passed Gatekeeper assessment, and fetched the updater archive directly over live HTTPS.
+- Apple accepted app submission `4c9eb7a2-b5ac-4b3f-991e-8b00004d2594`.
+- Apple accepted DMG submission `7c474943-65a4-4c76-902e-06a871b04ca4`; stapler validation and Gatekeeper assessment passed.
+- Published DMG SHA-256: `ca4a4bb9d3eac7f223c4ad3df46c5370034e73c718644f3c6f10a66e60237850`.
+- Published updater archive SHA-256: `088b3a1d32b214ae97adb1a64468a4ece1e71075c04c158d2f215f58350ec1de`.
+- Published `latest.json` SHA-256: `e6f67e9a19dbc0fc49aae20059963dbd7feea877f3646e3d89445bc371379abc`.
+- The protected tag workflow downloaded the public 0.1.2 app, installed the signed 0.1.3 update, and verified the staged app bundle changed to 0.1.3 after downloading all 45,570,815 updater bytes.
+- An independent post-publication download reproduced every published hash, confirmed the manifest's signed 0.1.3 updater URL, validated the stapled DMG ticket, passed Gatekeeper assessment and disk-image verification, and verified the extracted updater app's code signature and bundle version.
 
 The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
@@ -51,13 +51,13 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: generated from local worktree with uncommitted changes
+Source state: release tag v0.1.3 exists; the checkout may include post-release changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
 - Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.3_aarch64.dmg`
-- Recorded notarization submission (verify it matches this DMG): `637f68fc-ab52-4439-828a-a0b4ac2304ae`
+- Recorded notarization submission (verify it matches this DMG): `7c474943-65a4-4c76-902e-06a871b04ca4`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
@@ -118,7 +118,7 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Preserve the published 0.1.0 DMG and updater assets as the rollback baseline.
+1. Preserve the published 0.1.3 DMG and updater assets with the previous 0.1.2 release as the rollback baseline.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
@@ -284,7 +284,7 @@ Use [SUPPORT_RUNBOOK.md](SUPPORT_RUNBOOK.md) for failure and incident procedures
 
 ## 8. Updater acceptance
 
-The protected 0.1.2 tag workflow passed public manifest resolution, downloaded the published 0.1.0 app archive, installed the signed 0.1.2 update into a canonical staged copy, and verified that copy's bundle version changed to 0.1.2. That Rust-side harness bypassed the Vue UI proxy that later failed during hands-on testing. The release uses the same updater private key trusted by 0.1.0.
+The protected 0.1.3 tag workflow passed public manifest resolution, downloaded the published 0.1.2 app archive, installed the signed 0.1.3 update into a canonical staged copy, and verified that copy's bundle version changed to 0.1.3. This proves the signed Rust updater path; it does not substitute for the remaining hands-on Vue UI acceptance. The release uses the same updater private key trusted by 0.1.0 through 0.1.2.
 
 Operator acceptance remains:
 
