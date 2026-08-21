@@ -43,7 +43,7 @@ The first 0.1.1 candidate passed signing, notarization, artifact checks, and upd
 
 Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 or newer DMG over the existing app once.
 
-The first hands-on 0.1.3 to 0.1.4 hop downloaded and installed the signed release, but the old process remained on “Installing update” after its bundle had been replaced. Version 0.1.5 moves download, verification, installation, and restart into one Rust-side operation so a WebView response cannot strand the handoff. The protected updater smoke now requires the previous public app to exit and relaunch with a different PID and the new running version. Hands-on 0.1.4 to 0.1.5 update, app-data, and Services acceptance remain operator checks.
+The first hands-on 0.1.3 to 0.1.4 hop downloaded and installed the signed release, but the old process remained on “Installing update” after its bundle had been replaced. Version 0.1.5 moves download, verification, installation, and restart into one Rust-side operation so a WebView response cannot strand future handoffs. Because 0.1.4 cannot execute code that only exists in the replacement bundle, the 0.1.4 to 0.1.5 bridge still requires one manual quit/reopen after installation. Its protected smoke separately proves signed bundle replacement and launch of the installed 0.1.5 app under a new PID; releases after 0.1.5 must prove the automatic process hop. Hands-on app-data and Services acceptance remain operator checks.
 
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
@@ -53,7 +53,7 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: generated from local worktree with uncommitted changes
+Source state: release tag v0.1.5 exists; the checkout may include post-release changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
@@ -295,9 +295,9 @@ Operator acceptance remains:
 1. Back up representative app data from System.
 2. Confirm the installed 0.1.4 app loads that data before starting the update.
 3. From 0.1.4, use the top-right Update action or the detailed controls in System to download and install 0.1.5.
-4. Confirm the app automatically exits and relaunches as 0.1.5 without remaining on “Installing update.”
+4. When 0.1.4 remains on “Installing update,” quit it normally and reopen Dust Wave Social once; confirm the app launches as 0.1.5.
 5. Confirm representative app data, Keychain-backed service readiness, and saved Services configuration survived.
-6. Re-check for updates and confirm 0.1.5 reports that it is current before closing updater acceptance.
+6. Publish a later signed test release, update from 0.1.5, and confirm automatic exit/relaunch before closing updater acceptance.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.
 

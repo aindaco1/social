@@ -9,7 +9,7 @@ Versions through `2.6.0` are the changelog for the retained Mixpost Lite package
 - Fixed signed updates replacing the app bundle but leaving the old process indefinitely on “Installing update.”
 - Moved update download, signature verification, installation, and restart into one Rust-side operation so the WebView cannot strand the completion handoff during the bundle swap.
 - Added distinct verifying, installing, and restarting feedback to the compact updater UI.
-- Strengthened the protected release smoke test to require the previous public app to install the release, exit, relaunch under a different process ID, and report the new running version.
+- Added a fail-closed bridge smoke for 0.1.4 installation plus a new-process launch, and automatic process-hop acceptance for releases after 0.1.5.
 
 ## 0.1.4 - 2026-08-20
 

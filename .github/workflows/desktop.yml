@@ -296,7 +296,13 @@ jobs:
           mkdir -p "$previous_dir"
           gh release download "$previous_tag" --pattern 'Dust.Wave.Social.app.tar.gz' --dir "$previous_dir" --clobber
           tar -xzf "$previous_dir/Dust.Wave.Social.app.tar.gz" -C "$previous_dir"
-          npm run desktop:smoke:updater -- --mode hop --app "$previous_dir/Dust Wave Social.app"
+          if [[ "$previous_tag" == "v0.1.4" ]]; then
+            # v0.1.4 predates automatic restart. Prove the one-time bridge installs the new
+            # bundle and that the installed app launches under a new process.
+            npm run desktop:smoke:updater -- --mode bridge --app "$previous_dir/Dust Wave Social.app"
+          else
+            npm run desktop:smoke:updater -- --mode hop --app "$previous_dir/Dust Wave Social.app"
+          fi
 
       - name: Withdraw failed published release
         if: ${{ failure() && (github.ref_type == 'tag' || inputs.publish_release == 'true') }}

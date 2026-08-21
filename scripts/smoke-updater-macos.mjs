@@ -75,7 +75,9 @@ const tempBase = existsSync('/private/tmp') ? '/private/tmp' : os.tmpdir();
 const tempRoot = await mkdtemp(path.join(tempBase, 'dust-wave-updater-smoke-'));
 const appPath = path.join(tempRoot, path.basename(sourceAppPath));
 const reportPath = path.join(tempRoot, 'report.json');
+const launchReportPath = path.join(tempRoot, 'launch-report.json');
 let child;
+let launchChild;
 
 try {
     const staged = spawnSync('/usr/bin/ditto', [sourceAppPath, appPath], {
@@ -100,7 +102,7 @@ try {
             ...process.env,
             DUSTWAVE_SMOKE_REPORT: reportPath,
             DUSTWAVE_UPDATER_EXPECT_VERSION: expectedVersion,
-            DUSTWAVE_UPDATER_SMOKE: mode,
+            DUSTWAVE_UPDATER_SMOKE: mode === 'bridge' ? 'install' : mode,
             ...(mode === 'download' ? { DUSTWAVE_UPDATER_SMOKE_FORCE_UPDATE: '1' } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -168,11 +170,68 @@ try {
         }
     }
 
-    const processProof = mode === 'hop' ? `, PID ${report.source_pid} -> ${report.final_pid}` : '';
+    let processProof = mode === 'hop' ? `, PID ${report.source_pid} -> ${report.final_pid}` : '';
+
+    if (mode === 'bridge') {
+        const launchEnv = {
+            ...process.env,
+            DUSTWAVE_DESKTOP_SMOKE: 'launch',
+            DUSTWAVE_DESKTOP_SMOKE_REPORT: launchReportPath,
+        };
+        delete launchEnv.DUSTWAVE_SMOKE_REPORT;
+        delete launchEnv.DUSTWAVE_UPDATER_EXPECT_VERSION;
+        delete launchEnv.DUSTWAVE_UPDATER_SMOKE;
+        delete launchEnv.DUSTWAVE_UPDATER_SMOKE_FORCE_UPDATE;
+
+        launchChild = spawn(executablePath, [], {
+            cwd: tempRoot,
+            env: launchEnv,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let launchOutput = '';
+
+        launchChild.stdout.on('data', (chunk) => {
+            launchOutput += chunk;
+        });
+        launchChild.stderr.on('data', (chunk) => {
+            launchOutput += chunk;
+        });
+
+        const launchExitCode = await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                launchChild.kill();
+                reject(new Error(`Installed-app launch smoke timed out after ${timeoutMs}ms.`));
+            }, Math.max(1, deadline - Date.now()));
+
+            launchChild.once('error', (error) => {
+                clearTimeout(timeout);
+                reject(error);
+            });
+            launchChild.once('exit', (code) => {
+                clearTimeout(timeout);
+                resolve(code ?? 1);
+            });
+        });
+        const launchReport = JSON.parse(await readFile(launchReportPath, 'utf8'));
+
+        if (launchExitCode !== 0 || !launchReport.ok || launchReport.kind !== 'launch') {
+            throw new Error(`Installed-app launch smoke failed: ${JSON.stringify(launchReport)}${launchOutput.trim() ? `\n${launchOutput.trim()}` : ''}`);
+        }
+
+        if (launchReport.package_version !== expectedVersion || child.pid === launchChild.pid) {
+            throw new Error(`Installed-app launch did not start ${expectedVersion} in a new process: ${JSON.stringify(launchReport)}`);
+        }
+
+        processProof = `, manual bridge PID ${child.pid} -> ${launchChild.pid}`;
+    }
+
     console.log(`Updater ${mode} smoke passed for ${report.package_version} -> ${report.update_version} (${report.downloaded_bytes} bytes${processProof}).`);
 } finally {
     if (child && !child.killed && child.exitCode === null) {
         child.kill();
+    }
+    if (launchChild && !launchChild.killed && launchChild.exitCode === null) {
+        launchChild.kill();
     }
     await rm(tempRoot, { recursive: true, force: true });
 }
