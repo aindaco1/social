@@ -4,6 +4,13 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.4 - 2026-08-20
+
+- Replaced separate credential and service controls with one provider-specific save action across all six service configurations.
+- Added explicit saved, partial-failure, missing-credential, inactive, incomplete, and ready feedback without displaying stored secret values.
+- Kept already available credentials unchanged when their fields are left blank and restored the previous Active state when a later step fails.
+- Refreshed compatible locked dependencies to remove all production npm audit advisories; the remaining Vite development-server advisories are excluded from the packaged app.
+
 ## 0.1.3 - 2026-08-19
 
 - Fixed in-app updates failing before download when Vue proxied Tauri's private updater resource.

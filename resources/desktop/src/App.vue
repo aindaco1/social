@@ -356,6 +356,11 @@ const serviceCredentialDraftDefaults = serviceDefinitions.reduce((drafts, servic
 
     return drafts;
 }, {});
+const serviceActiveDraftDefaults = serviceDefinitions.reduce((drafts, service) => {
+    drafts[service.id] = false;
+
+    return drafts;
+}, {});
 const SOFTWARE_UPDATE_IDLE_STATUS = 'Not checked yet';
 const dashboard = ref(null);
 const credentialStatuses = ref([]);
@@ -493,6 +498,7 @@ const tagEditDraft = ref({
 const activeServiceTab = ref('facebook');
 const serviceCredentialDrafts = ref(JSON.parse(JSON.stringify(serviceCredentialDraftDefaults)));
 const serviceConfigurationDrafts = ref(JSON.parse(JSON.stringify(serviceConfigurationDefaults)));
+const serviceActiveDrafts = ref({ ...serviceActiveDraftDefaults });
 const twitterOAuthDraft = ref({
     redirect_uri: 'http://localhost/callback',
     code: '',
@@ -544,9 +550,8 @@ const tagSaving = ref(false);
 const tagError = ref('');
 const serviceSaving = ref(false);
 const serviceError = ref('');
+const serviceSaveMessage = ref('');
 const serviceSetupCopied = ref('');
-const credentialSaving = ref(false);
-const credentialError = ref('');
 const twitterOAuthSaving = ref(false);
 const twitterOAuthError = ref('');
 const twitterOAuthStart = ref(null);
@@ -870,8 +875,8 @@ const systemTechnicalRows = computed(() => [
         value: 'Local',
     },
     {
-        label: 'Services configured',
-        value: `${configuredCredentialCount.value}/${credentialStatuses.value.length}`,
+        label: 'Services active',
+        value: `${activeCredentialCount.value}/${serviceDefinitions.length}`,
     },
     {
         label: 'Accounts',
@@ -1521,7 +1526,7 @@ const navigationBadge = (id) => {
     }
 
     if (id === 'services') {
-        return `${configuredCredentialCount.value}/${credentialStatuses.value.length} ready`;
+        return `${activeCredentialCount.value}/${serviceDefinitions.length} ready`;
     }
 
     if (id === 'reports') {
@@ -2868,6 +2873,7 @@ const setMediaTab = (tab) => {
 
 const syncServiceConfigurationDrafts = (services = snapshot.value.services) => {
     const nextDrafts = JSON.parse(JSON.stringify(serviceConfigurationDefaults));
+    const nextActiveDrafts = { ...serviceActiveDraftDefaults };
 
     serviceDefinitions.forEach((definition) => {
         const service = services.find((item) => item.name === definition.id);
@@ -2875,9 +2881,15 @@ const syncServiceConfigurationDrafts = (services = snapshot.value.services) => {
             ...(nextDrafts[definition.id] || {}),
             ...(service?.configuration || {}),
         };
+        nextActiveDrafts[definition.id] = Boolean(
+            service?.active
+            ?? serviceStatusByName(definition.id)?.active
+            ?? false,
+        );
     });
 
     serviceConfigurationDrafts.value = nextDrafts;
+    serviceActiveDrafts.value = nextActiveDrafts;
 };
 
 const draftSubmitLabel = computed(() => {
@@ -3750,6 +3762,17 @@ const showServiceTab = (serviceName) => {
     activeView.value = 'services';
 };
 
+const selectServiceTab = (serviceName) => {
+    activeServiceTab.value = serviceName;
+    serviceError.value = '';
+    serviceSaveMessage.value = '';
+};
+
+const clearServiceFeedback = () => {
+    serviceError.value = '';
+    serviceSaveMessage.value = '';
+};
+
 const serviceConfigurationPayload = (serviceName) => {
     return {
         ...(serviceConfigurationDrafts.value[serviceName] || {}),
@@ -3767,8 +3790,12 @@ const serviceStatusText = (serviceName) => {
     const status = serviceStatusByName(serviceName);
     const active = serviceActiveValue(serviceName);
 
-    if (status?.configured && active) {
+    if (serviceReady(serviceName)) {
         return 'active and configured';
+    }
+
+    if (status?.configured && active) {
+        return 'active but setup incomplete';
     }
 
     if (status?.configured) {
@@ -3779,7 +3806,35 @@ const serviceStatusText = (serviceName) => {
         return 'active but missing credentials';
     }
 
-    return 'missing credentials or inactive';
+    return 'missing credentials';
+};
+
+const serviceTabStatusText = (serviceName) => {
+    if (serviceReady(serviceName)) {
+        return 'ready';
+    }
+
+    const status = serviceStatusByName(serviceName);
+
+    if (status?.configured && serviceActiveValue(serviceName)) {
+        return 'incomplete';
+    }
+
+    return status?.configured ? 'inactive' : 'missing';
+};
+
+const serviceCredentialInputHint = (fieldName) => {
+    const field = activeServiceConfiguredFields.value.get(fieldName);
+
+    if (field?.configured) {
+        return 'Available — leave blank to keep current value';
+    }
+
+    if (field?.env_vars?.length) {
+        return `Required · env fallback: ${field.env_vars.join(' or ')}`;
+    }
+
+    return 'Required';
 };
 
 const serviceCredentialStatusText = (service, credential) => {
@@ -3797,7 +3852,26 @@ const serviceCredentialStatusText = (service, credential) => {
     return 'missing';
 };
 
-const saveServiceConfiguration = async (serviceName = activeServiceTab.value, active = serviceActiveValue(serviceName)) => {
+const clearSavedServiceCredentialDrafts = (serviceName, savedFields) => {
+    if (!savedFields.length) {
+        return;
+    }
+
+    const nextServiceDraft = {
+        ...(serviceCredentialDrafts.value[serviceName] || {}),
+    };
+
+    savedFields.forEach((fieldName) => {
+        nextServiceDraft[fieldName] = '';
+    });
+
+    serviceCredentialDrafts.value = {
+        ...serviceCredentialDrafts.value,
+        [serviceName]: nextServiceDraft,
+    };
+};
+
+const saveServiceSettings = async (serviceName = activeServiceTab.value) => {
     const definition = serviceDefinitionByName(serviceName);
     const record = serviceRecordByName(serviceName);
 
@@ -3806,10 +3880,46 @@ const saveServiceConfiguration = async (serviceName = activeServiceTab.value, ac
         return;
     }
 
+    const active = Boolean(serviceActiveDrafts.value[serviceName]);
+    const previousActive = serviceActiveValue(serviceName);
+    const statusFields = new Map(
+        (serviceStatusByName(serviceName)?.fields || []).map((field) => [field.field, field]),
+    );
+    const missingCredentials = definition.credentials.filter((credential) => {
+        const draftValue = serviceCredentialDrafts.value[serviceName]?.[credential.field] || '';
+
+        return !draftValue.trim() && !statusFields.get(credential.field)?.configured;
+    });
+
+    if (active && missingCredentials.length) {
+        serviceSaveMessage.value = '';
+        serviceError.value = `Add ${missingCredentials.map((credential) => credential.label).join(' and ')} before activating ${definition.label}.`;
+        return;
+    }
+
     serviceSaving.value = true;
     serviceError.value = '';
+    serviceSaveMessage.value = '';
+    const savedFields = [];
 
     try {
+        for (const credential of definition.credentials) {
+            const value = serviceCredentialDrafts.value[serviceName]?.[credential.field] || '';
+
+            if (!value.trim()) {
+                continue;
+            }
+
+            await invoke('save_service_credential', {
+                credential: {
+                    service: serviceName,
+                    field: credential.field,
+                    value,
+                },
+            });
+            savedFields.push(credential.field);
+        }
+
         await invoke('save_service', {
             service: {
                 name: serviceName,
@@ -3818,53 +3928,50 @@ const saveServiceConfiguration = async (serviceName = activeServiceTab.value, ac
                 active,
             },
         });
+        clearSavedServiceCredentialDrafts(serviceName, savedFields);
         await load();
+        const credentialSummary = savedFields.length
+            ? `${pluralize(savedFields.length, 'credential')} stored in Keychain.`
+            : 'Existing credentials were left unchanged.';
+        const readinessSummary = active
+            ? `Service is active${serviceReady(serviceName) ? ' and ready' : ', but setup is incomplete'}.`
+            : 'Service is inactive.';
+        serviceSaveMessage.value = `${definition.label} settings saved. ${credentialSummary} ${readinessSummary}`;
     } catch (error) {
-        serviceError.value = String(error);
+        clearSavedServiceCredentialDrafts(serviceName, savedFields);
+        let stateRestoreWarning = '';
+
+        if (savedFields.length) {
+            try {
+                await invoke('save_service', {
+                    service: {
+                        name: serviceName,
+                        configuration_secret_ref: record?.configuration_secret_ref || definition.configurationSecretRef,
+                        configuration: null,
+                        active: previousActive,
+                    },
+                });
+            } catch {
+                stateRestoreWarning = ' The previous Active state could not be restored; review it before continuing.';
+            }
+        }
+
+        const partialSaveWarning = savedFields.length
+            ? ` ${pluralize(savedFields.length, 'credential')} saved before the failure remain in Keychain.`
+            : '';
+        serviceError.value = `Could not finish saving ${definition.label} settings.${partialSaveWarning}${stateRestoreWarning} ${String(error)}`;
+
+        if (savedFields.length) {
+            await load();
+        }
     } finally {
         serviceSaving.value = false;
     }
 };
 
-const setServiceActive = async (serviceName, event) => {
-    await saveServiceConfiguration(serviceName, event.target.checked);
-};
-
-const saveServiceCredential = async (serviceName, fieldName) => {
-    const value = serviceCredentialDrafts.value[serviceName]?.[fieldName] || '';
-
-    if (!value.trim()) {
-        credentialError.value = 'Credential value is required';
-        return;
-    }
-
-    credentialSaving.value = true;
-    credentialError.value = '';
-
-    try {
-        credentialStatuses.value = await invoke('save_service_credential', {
-            credential: {
-                service: serviceName,
-                field: fieldName,
-                value,
-            },
-        });
-        serviceCredentialDrafts.value = {
-            ...serviceCredentialDrafts.value,
-            [serviceName]: {
-                ...(serviceCredentialDrafts.value[serviceName] || {}),
-                [fieldName]: '',
-            },
-        };
-        await load();
-    } catch (error) {
-        credentialError.value = String(error);
-    } finally {
-        credentialSaving.value = false;
-    }
-};
-
 const openServiceUrl = async (url) => {
+    clearServiceFeedback();
+
     if (url) {
         await openOAuthUrl(url, serviceError);
     }
@@ -3888,6 +3995,7 @@ const openTikTokBrokerAuth = async () => {
 };
 
 const openTikTokBrokerAuthFromServices = async () => {
+    clearServiceFeedback();
     await openTikTokBrokerAuthWithTarget(serviceError);
 };
 
@@ -3930,7 +4038,7 @@ const serviceSetupText = (service) => {
 };
 
 const copyServiceSetup = async (service) => {
-    serviceError.value = '';
+    clearServiceFeedback();
 
     try {
         await navigator.clipboard.writeText(serviceSetupText(service));
@@ -3941,7 +4049,7 @@ const copyServiceSetup = async (service) => {
 };
 
 const copyServiceSetupField = async (service, field) => {
-    serviceError.value = '';
+    clearServiceFeedback();
 
     try {
         await navigator.clipboard.writeText(serviceSetupFieldValue(service, field));
@@ -3962,8 +4070,8 @@ const providerSetupBundleText = (onlyMissing = false) => {
         '',
         'Next actions',
         '1. Open each Create App URL and paste the callback URLs, scopes, and setup values below.',
-        '2. Save each provider client ID/API key and secret through the matching Dust Wave Services form.',
-        '3. Toggle the service Active and use Accounts to start OAuth for each Dust Wave account.',
+        '2. Enter each provider client ID/API key, secret, and configuration in the matching Dust Wave Services form.',
+        '3. Select Active, use the single Save Settings action, then use Accounts to start OAuth for each Dust Wave account.',
     ];
 
     if (!services.length) {
@@ -3981,7 +4089,7 @@ const providerSetupBundleText = (onlyMissing = false) => {
 };
 
 const copyProviderSetupBundle = async (onlyMissing = false) => {
-    serviceError.value = '';
+    clearServiceFeedback();
 
     try {
         await navigator.clipboard.writeText(providerSetupBundleText(onlyMissing));
@@ -6586,7 +6694,7 @@ onUnmounted(() => {
                                     >
                                         {{ serviceSetupCopied === 'bundle:missing' ? 'Copied Missing' : 'Copy Missing' }}
                                     </button>
-                                    <span>{{ configuredCredentialCount }}/{{ credentialStatuses.length }}</span>
+                                    <span>{{ configuredCredentialCount }}/{{ credentialStatuses.length }} configured</span>
                                 </div>
                             </header>
                             <div v-if="serviceSetupCopied === 'bundle:all' || serviceSetupCopied === 'bundle:missing'" class="form-note">
@@ -6598,11 +6706,12 @@ onUnmounted(() => {
                                     :key="service.id"
                                     type="button"
                                     :class="{ 'is-active': activeServiceTab === service.id }"
-                                    @click="activeServiceTab = service.id"
+                                    :disabled="serviceSaving"
+                                    @click="selectServiceTab(service.id)"
                                 >
                                     {{ service.label }}
-                                    <span :class="['mini-state', serviceStatusByName(service.id)?.configured ? 'is-ok' : 'is-muted']">
-                                        {{ serviceStatusByName(service.id)?.configured ? 'set' : 'missing' }}
+                                    <span :class="['mini-state', serviceReady(service.id) ? 'is-ok' : 'is-muted']">
+                                        {{ serviceTabStatusText(service.id) }}
                                     </span>
                                 </button>
                             </div>
@@ -6613,7 +6722,7 @@ onUnmounted(() => {
                                         <small>{{ activeServiceDefinition.description }}</small>
                                     </div>
                                     <span :class="['mini-state', activeServiceIsReady ? 'is-ok' : 'is-muted']">
-                                        {{ activeServiceIsReady ? 'active' : 'inactive' }}
+                                        {{ serviceStatusText(activeServiceDefinition.id) }}
                                     </span>
                                 </header>
                                 <div class="service-link-row">
@@ -6654,82 +6763,92 @@ onUnmounted(() => {
                                         </button>
                                     </div>
                                 </div>
-                                <div class="service-field-list">
-                                    <form
-                                        v-for="credential in activeServiceDefinition.credentials"
-                                        :key="credential.field"
-                                        class="service-field-form"
-                                        @submit.prevent="saveServiceCredential(activeServiceDefinition.id, credential.field)"
-                                    >
-                                        <label :for="`service-${activeServiceDefinition.id}-${credential.field}`">
-                                            <span>{{ credential.label }}</span>
-                                            <small>
-                                                {{ activeServiceConfiguredFields.get(credential.field)?.configured ? 'Saved in keychain' : activeServiceConfiguredFields.get(credential.field)?.env_vars?.join(' or ') }}
-                                            </small>
-                                        </label>
-                                        <input
-                                            :id="`service-${activeServiceDefinition.id}-${credential.field}`"
-                                            v-model="serviceCredentialDrafts[activeServiceDefinition.id][credential.field]"
-                                            :type="credential.secret ? 'password' : 'text'"
-                                            :autocomplete="credential.autocomplete"
-                                            placeholder="Enter value"
-                                        />
-                                        <button type="submit" :disabled="credentialSaving">
-                                            Save
-                                        </button>
-                                    </form>
-                                </div>
-                                <div v-if="activeServiceDefinition.configuration.length" class="service-options-grid">
-                                    <label v-for="configField in activeServiceDefinition.configuration" :key="configField.field">
-                                        <span>{{ configField.label }}</span>
-                                        <select
-                                            v-if="configField.options?.length"
-                                            v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]"
+                                <form
+                                    class="service-settings-form"
+                                    :aria-busy="serviceSaving"
+                                    @submit.prevent="saveServiceSettings(activeServiceDefinition.id)"
+                                >
+                                    <p class="service-security-note">
+                                        Credentials entered here are stored in macOS Keychain. Leave an available field blank to keep its current value.
+                                    </p>
+                                    <div class="service-field-list">
+                                        <div
+                                            v-for="credential in activeServiceDefinition.credentials"
+                                            :key="credential.field"
+                                            class="service-field-form"
                                         >
-                                            <option
-                                                v-for="option in configField.options"
-                                                :key="typeof option === 'string' ? option : option.value"
-                                                :value="typeof option === 'string' ? option : option.value"
+                                            <label :for="`service-${activeServiceDefinition.id}-${credential.field}`">
+                                                <span>{{ credential.label }}</span>
+                                                <small>{{ serviceCredentialInputHint(credential.field) }}</small>
+                                            </label>
+                                            <input
+                                                :id="`service-${activeServiceDefinition.id}-${credential.field}`"
+                                                v-model="serviceCredentialDrafts[activeServiceDefinition.id][credential.field]"
+                                                :type="credential.secret ? 'password' : 'text'"
+                                                :autocomplete="credential.autocomplete"
+                                                :placeholder="activeServiceConfiguredFields.get(credential.field)?.configured ? 'Leave blank to keep saved value' : 'Enter value'"
+                                                :disabled="serviceSaving"
+                                                @input="clearServiceFeedback"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div v-if="activeServiceDefinition.configuration.length" class="service-options-grid">
+                                        <label v-for="configField in activeServiceDefinition.configuration" :key="configField.field">
+                                            <span>{{ configField.label }}</span>
+                                            <select
+                                                v-if="configField.options?.length"
+                                                v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]"
+                                                :disabled="serviceSaving"
+                                                @change="clearServiceFeedback"
                                             >
-                                                {{ typeof option === 'string' ? option : option.label }}
-                                            </option>
-                                        </select>
-                                        <input
-                                            v-else
-                                            v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]"
-                                            :placeholder="configField.placeholder || ''"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="service-provider-actions">
-                                    <label>
-                                        <input
-                                            type="checkbox"
-                                            :checked="serviceActiveValue(activeServiceDefinition.id)"
-                                            @change="setServiceActive(activeServiceDefinition.id, $event)"
-                                        />
-                                        Active
-                                    </label>
-                                    <button
-                                        type="button"
-                                        :disabled="serviceSaving"
-                                        @click="saveServiceConfiguration(activeServiceDefinition.id, serviceActiveValue(activeServiceDefinition.id))"
-                                    >
-                                        Save Service
-                                    </button>
-                                    <button
-                                        v-if="activeServiceDefinition.id === 'tiktok'"
-                                        type="button"
-                                        class="inline-button"
-                                        :disabled="!tiktokBrokerAuthUrl()"
-                                        @click="openTikTokBrokerAuthFromServices"
-                                    >
-                                        Open Broker Auth
-                                    </button>
-                                </div>
+                                                <option
+                                                    v-for="option in configField.options"
+                                                    :key="typeof option === 'string' ? option : option.value"
+                                                    :value="typeof option === 'string' ? option : option.value"
+                                                >
+                                                    {{ typeof option === 'string' ? option : option.label }}
+                                                </option>
+                                            </select>
+                                            <input
+                                                v-else
+                                                v-model="serviceConfigurationDrafts[activeServiceDefinition.id][configField.field]"
+                                                :placeholder="configField.placeholder || ''"
+                                                :disabled="serviceSaving"
+                                                @input="clearServiceFeedback"
+                                            />
+                                        </label>
+                                    </div>
+                                    <div class="service-provider-actions">
+                                        <label>
+                                            <input
+                                                v-model="serviceActiveDrafts[activeServiceDefinition.id]"
+                                                type="checkbox"
+                                                :disabled="serviceSaving"
+                                                @change="clearServiceFeedback"
+                                            />
+                                            Active
+                                        </label>
+                                        <button type="submit" :disabled="serviceSaving">
+                                            {{ serviceSaving ? `Saving ${activeServiceDefinition.label}…` : `Save ${activeServiceDefinition.label} Settings` }}
+                                        </button>
+                                        <button
+                                            v-if="activeServiceDefinition.id === 'tiktok'"
+                                            type="button"
+                                            class="inline-button"
+                                            :disabled="serviceSaving || !tiktokBrokerAuthUrl()"
+                                            @click="openTikTokBrokerAuthFromServices"
+                                        >
+                                            Open Broker Auth
+                                        </button>
+                                    </div>
+                                    <p v-if="serviceSaveMessage" class="form-note service-save-feedback" role="status" aria-live="polite">
+                                        {{ serviceSaveMessage }}
+                                    </p>
+                                    <p v-if="serviceError" class="form-error service-save-feedback" role="alert">
+                                        {{ serviceError }}
+                                    </p>
+                                </form>
                             </section>
-                            <div v-if="serviceError" class="form-error">{{ serviceError }}</div>
-                            <div v-if="credentialError" class="form-error">{{ credentialError }}</div>
                             <div class="credential-grid">
                                 <div v-for="status in credentialStatuses" :key="status.service" class="credential-card">
                                     <div class="credential-card-header">

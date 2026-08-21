@@ -14,7 +14,7 @@ The production desktop interface contains these first-class workflows:
 - Calendar: month/day cells, an hourly week grid, scheduled-post details, and composer shortcuts with prefilled dates and times.
 - Media: local import, drag/drop, URL download, uploaded/stock/GIF tabs, thumbnails, filtering, multi-delete, provider media references, and create-post actions.
 - Accounts: provider-specific connection flows, authorization state, refresh, import, disconnect, setup warnings, and redaction-safe onboarding exports.
-- Services: provider credential readiness, Keychain-backed saves, active state, API versions/tiers, setup packets, and missing-service reports.
+- Services: unified per-provider saves for Keychain-backed credentials, configuration, and active state; explicit readiness feedback; API versions/tiers; setup packets; and missing-service reports.
 - Reports: provider-specific metrics, audience charts, period summaries, loading/empty/error states, and imported post performance.
 - Tags: create, edit, delete, color, filter, and composer assignment.
 - Settings and Profile: local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs.

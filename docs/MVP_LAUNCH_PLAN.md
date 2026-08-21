@@ -1,6 +1,6 @@
 # Dust Wave Social MVP Launch Plan
 
-Updated: 2026-08-19
+Updated: 2026-08-20
 
 Audience: Dust Wave operators and release maintainers preparing the Apple Silicon macOS release.
 
@@ -41,7 +41,7 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
-Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 DMG over the existing app once; the following release will provide the first valid end-to-end UI updater acceptance hop.
+Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 DMG over the existing app once. Version 0.1.4 is the first release candidate for an end-to-end updater hop from the fixed 0.1.3 client.
 
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
@@ -51,17 +51,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.3 exists; the checkout may include post-release changes
+Source state: v0.1.4
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.3_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.4_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `7c474943-65a4-4c76-902e-06a871b04ca4`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.3`
+- Updater version: `0.1.4`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 
@@ -118,14 +118,14 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Preserve the published 0.1.3 DMG and updater assets with the previous 0.1.2 release as the rollback baseline.
+1. Preserve the published 0.1.3 DMG and updater assets as the rollback baseline for 0.1.4.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Install the 0.1.3 hotfix DMG over an affected version, then complete hands-on update, relaunch, and app-data acceptance with the next release.
+8. Install the 0.1.3 hotfix DMG over an affected version, then complete hands-on update, relaunch, and app-data acceptance with 0.1.4.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
@@ -180,6 +180,8 @@ Intel and universal macOS builds are outside MVP scope.
 In Services, use `Copy All Setup` or `Copy Missing`. The packet must contain callback URLs, scopes, and setup instructions but no existing secret values.
 
 Store credentials only in provider portals, Cloudflare/GitHub secret stores, or the app's Keychain-backed forms.
+
+Each provider has one `Save [Provider] Settings` action. It saves every newly entered credential to macOS Keychain, saves the visible configuration and Active state together, and reports the result in the provider card. Leave an already available credential blank to keep its current value. Activating a provider is blocked until every required credential is either already available or entered in the form.
 
 ### X/Twitter
 

@@ -2347,6 +2347,23 @@ code {
     line-height: 1.35;
 }
 
+.service-settings-form {
+    display: grid;
+    gap: 12px;
+}
+
+.service-security-note {
+    margin: 0;
+    padding: 9px 10px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    background: #f8fafc;
+    border: 1px solid #edf0f3;
+    border-radius: 6px;
+}
+
 .service-link-row,
 .service-provider-actions {
     display: flex;
@@ -2394,7 +2411,7 @@ code {
 
 .service-field-form {
     display: grid;
-    grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
     gap: 8px;
     align-items: center;
 }
@@ -2423,6 +2440,10 @@ code {
     color: #334155;
     font-size: 12px;
     font-weight: 800;
+}
+
+.service-save-feedback {
+    margin: 0;
 }
 
 .provider-connect-card {

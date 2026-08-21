@@ -69,6 +69,33 @@ test('media staging service requires an HTTPS Worker base URL', () => {
     assert.ok(appSource.includes("serviceName === 'media_staging'"));
 });
 
+test('every service configuration uses one explicit save with complete feedback', () => {
+    const serviceDefinitionsSource = sourceBetween('const serviceDefinitions = [', 'const serviceConfigurationDefaults');
+    const serviceSaveFlow = sourceBetween('const saveServiceSettings', 'const openServiceUrl');
+    const servicesMarkup = sourceBetween("<article v-if=\"activeView === 'services'\"", "<article v-if=\"activeView === 'posts'\"");
+
+    for (const serviceName of ['facebook', 'media_staging', 'twitter', 'tiktok', 'unsplash', 'klipy']) {
+        assert.ok(serviceDefinitionsSource.includes(`id: '${serviceName}'`));
+    }
+
+    assert.ok(servicesMarkup.includes('@submit.prevent="saveServiceSettings(activeServiceDefinition.id)"'));
+    assert.ok(servicesMarkup.includes('v-model="serviceActiveDrafts[activeServiceDefinition.id]"'));
+    assert.ok(servicesMarkup.includes('Save ${activeServiceDefinition.label} Settings'));
+    assert.ok(servicesMarkup.includes('role="status"'));
+    assert.ok(servicesMarkup.includes('role="alert"'));
+    assert.equal(servicesMarkup.includes('saveServiceCredential'), false);
+    assert.equal(servicesMarkup.includes('Save Service'), false);
+
+    const credentialSaveIndex = serviceSaveFlow.indexOf("invoke('save_service_credential'");
+    const configurationSaveIndex = serviceSaveFlow.indexOf("invoke('save_service'");
+
+    assert.notEqual(credentialSaveIndex, -1);
+    assert.ok(configurationSaveIndex > credentialSaveIndex);
+    assert.ok(serviceSaveFlow.includes('missingCredentials'));
+    assert.ok(serviceSaveFlow.includes('active: previousActive'));
+    assert.ok(serviceSaveFlow.includes('remain in Keychain'));
+});
+
 test('local AI media labs are opt-in and use bundled LiteRT assets', () => {
     assert.ok(appSource.includes('local_ai_media_labs'));
     assert.ok(appSource.includes("await import('@litertjs/core')"));
