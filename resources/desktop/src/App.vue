@@ -1,5 +1,5 @@
 <script setup>
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { Channel, convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -3439,7 +3439,8 @@ const installSoftwareUpdate = async () => {
     softwareUpdateStatus.value = `Downloading version ${update.version}`;
 
     try {
-        await update.downloadAndInstall((event) => {
+        const onEvent = new Channel();
+        onEvent.onmessage = (event) => {
             if (event.event === 'Started') {
                 totalBytes = Number(event.data.contentLength) || 0;
                 downloadedBytes = 0;
@@ -3459,13 +3460,25 @@ const installSoftwareUpdate = async () => {
             }
 
             if (event.event === 'Finished') {
+                softwareUpdateProgress.value = 'Verifying signed update';
+                softwareUpdateStatus.value = `Verifying version ${update.version}`;
+            }
+
+            if (event.event === 'Installing') {
                 softwareUpdateProgress.value = 'Installing update';
                 softwareUpdateStatus.value = `Installing version ${update.version}`;
             }
-        }, { timeout: 300000 });
 
-        softwareUpdateStatus.value = 'Update installed. Restart Dust Wave Social to finish.';
-        softwareUpdateAvailable.value = null;
+            if (event.event === 'Restarting') {
+                softwareUpdateProgress.value = 'Restarting Dust Wave Social';
+                softwareUpdateStatus.value = `Version ${update.version} installed`;
+            }
+        };
+
+        await invoke('install_software_update_and_restart', {
+            expectedVersion: update.version,
+            onEvent,
+        });
     } catch (error) {
         softwareUpdateError.value = updaterErrorMessage(error);
         softwareUpdateStatus.value = 'Update install failed';

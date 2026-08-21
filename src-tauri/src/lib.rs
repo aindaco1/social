@@ -8,6 +8,7 @@ mod mastodon;
 mod media_staging;
 mod media_tools;
 mod secrets;
+mod software_update;
 mod tiktok;
 mod twitter;
 
@@ -97,6 +98,7 @@ pub fn run() {
             commands::register_mastodon_app,
             commands::connect_mastodon_account,
             commands::save_service,
+            software_update::install_software_update_and_restart,
             commands::tags,
             commands::create_tag,
             commands::update_tag,

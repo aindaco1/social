@@ -1,6 +1,6 @@
 # Dust Wave Social MVP Launch Plan
 
-Updated: 2026-08-20
+Updated: 2026-08-21
 
 Audience: Dust Wave operators and release maintainers preparing the Apple Silicon macOS release.
 
@@ -41,7 +41,9 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
-Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 DMG over the existing app once. Version 0.1.4 provides the first verified updater hop from the fixed 0.1.3 client; hands-on update, relaunch, app-data, and Services acceptance remain operator checks.
+Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 or newer DMG over the existing app once.
+
+The first hands-on 0.1.3 to 0.1.4 hop downloaded and installed the signed release, but the old process remained on “Installing update” after its bundle had been replaced. Version 0.1.5 moves download, verification, installation, and restart into one Rust-side operation so a WebView response cannot strand the handoff. The protected updater smoke now requires the previous public app to exit and relaunch with a different PID and the new running version. Hands-on 0.1.4 to 0.1.5 update, app-data, and Services acceptance remain operator checks.
 
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
@@ -51,17 +53,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: v0.1.4
+Source state: generated from local worktree with uncommitted changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.4_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.5_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `00598c1c-5806-4138-b1be-9fc4397d1a70`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.4`
+- Updater version: `0.1.5`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 
@@ -87,7 +89,7 @@ Manual acceptance still required:
 - Klipy production key and attribution acceptance - requires provider portal, live account, or separate target Mac
 - Dust Wave account onboarding and live publish/import acceptance - requires provider portal, live account, or separate target Mac
 - Clean-Mac Gatekeeper install test - requires provider portal, live account, or separate target Mac
-- Operator updater installation, relaunch, and app-data acceptance - requires the installed 0.1.0 app and representative app data on the target Mac
+- Operator updater installation, relaunch, and app-data acceptance - requires the installed previous public release and representative app data on the target Mac
 
 ## Rollback Plan
 
@@ -118,14 +120,14 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Preserve the published 0.1.4 DMG and updater assets with 0.1.3 as the rollback baseline.
+1. Preserve the published 0.1.4 DMG and updater assets as the rollback baseline for 0.1.5.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Install the 0.1.3 hotfix DMG over an affected version, then complete hands-on update, relaunch, and app-data acceptance with 0.1.4.
+8. Start from the installed 0.1.4 app, then complete hands-on update, automatic relaunch, and app-data acceptance with 0.1.5.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
@@ -291,11 +293,11 @@ The protected 0.1.3 tag workflow passed public manifest resolution, downloaded t
 Operator acceptance remains:
 
 1. Back up representative app data from System.
-2. Install the signed and stapled 0.1.3 DMG over an installed 0.1.0 or 0.1.2 app without uninstalling first.
-3. Confirm the version changed to 0.1.3 and app data survived.
-4. Publish a later signed test release using the same updater private key.
-5. From 0.1.3, use the top-right Update action or the detailed controls in System to download, install, and relaunch.
-6. Confirm the version changed and app data survived before closing updater acceptance.
+2. Confirm the installed 0.1.4 app loads that data before starting the update.
+3. From 0.1.4, use the top-right Update action or the detailed controls in System to download and install 0.1.5.
+4. Confirm the app automatically exits and relaunches as 0.1.5 without remaining on “Installing update.”
+5. Confirm representative app data, Keychain-backed service readiness, and saved Services configuration survived.
+6. Re-check for updates and confirm 0.1.5 reports that it is current before closing updater acceptance.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.
 

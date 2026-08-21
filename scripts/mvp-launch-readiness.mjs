@@ -400,7 +400,7 @@ for (const label of [
 record(
     'manual',
     'Operator updater installation, relaunch, and app-data acceptance',
-    'requires the installed 0.1.0 app and representative app data on the target Mac',
+    'requires the installed previous public release and representative app data on the target Mac',
 );
 
 const submissionId = currentNotarizationId();

@@ -1,19 +1,24 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{env, fs, process, thread, time::Duration};
 use tauri::App;
 use tauri_plugin_updater::UpdaterExt;
 
-#[derive(Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct SmokeReport {
     ok: bool,
     kind: String,
     mode: String,
     package_version: String,
+    running_version: String,
     expected_version: Option<String>,
     found_update: bool,
     update_version: Option<String>,
     downloaded_bytes: Option<usize>,
     install_started: bool,
+    restart_requested: bool,
+    restarted: bool,
+    source_pid: Option<u32>,
+    final_pid: Option<u32>,
     error: Option<String>,
 }
 
@@ -39,12 +44,17 @@ fn spawn_launch_smoke(app: &App) {
                 ok: true,
                 kind: "launch".to_string(),
                 mode: "launch".to_string(),
-                package_version,
+                package_version: package_version.clone(),
+                running_version: package_version,
                 expected_version: None,
                 found_update: false,
                 update_version: None,
                 downloaded_bytes: None,
                 install_started: false,
+                restart_requested: false,
+                restarted: false,
+                source_pid: None,
+                final_pid: Some(process::id()),
                 error: None,
             },
             0,
@@ -70,18 +80,27 @@ fn spawn_updater_smoke(app: &App) {
         .await;
 
         match result {
+            Ok(report) if report.restart_requested && !report.restarted => {
+                // The report was written before the restart request. The replacement process
+                // will complete the hop report and exit through this same smoke entry point.
+            }
             Ok(report) => finish(report, 0),
             Err(error) => finish(
                 SmokeReport {
                     ok: false,
                     kind: "updater".to_string(),
                     mode,
-                    package_version,
+                    package_version: package_version.clone(),
+                    running_version: package_version,
                     expected_version,
                     found_update: false,
                     update_version: None,
                     downloaded_bytes: None,
                     install_started: false,
+                    restart_requested: false,
+                    restarted: false,
+                    source_pid: None,
+                    final_pid: Some(process::id()),
                     error: Some(error),
                 },
                 1,
@@ -97,6 +116,10 @@ async fn run_updater_smoke(
     expected_version: Option<String>,
     force_update: bool,
 ) -> Result<SmokeReport, String> {
+    if mode == "hop" && expected_version.as_deref() == Some(package_version.as_str()) {
+        return complete_updater_hop(package_version, expected_version);
+    }
+
     let mut builder = handle.updater_builder().timeout(Duration::from_secs(120));
 
     if force_update {
@@ -128,25 +151,89 @@ async fn run_updater_smoke(
     }
 
     let install_mode = matches!(mode.as_str(), "install" | "download-and-install" | "hop");
-    let report = SmokeReport {
+    let mut report = SmokeReport {
         ok: true,
         kind: "updater".to_string(),
         mode,
-        package_version,
+        package_version: package_version.clone(),
+        running_version: package_version,
         expected_version,
         found_update: true,
         update_version: Some(update.version.clone()),
         downloaded_bytes: Some(bytes.len()),
         install_started: install_mode,
+        restart_requested: false,
+        restarted: false,
+        source_pid: install_mode.then(process::id),
+        final_pid: None,
         error: None,
     };
 
     if install_mode {
         emit_report(&report);
         update.install(bytes).map_err(|error| error.to_string())?;
+
+        if report.mode == "hop" {
+            report.restart_requested = true;
+            emit_report(&report);
+            handle.request_restart();
+        }
     }
 
     Ok(report)
+}
+
+fn complete_updater_hop(
+    running_version: String,
+    expected_version: Option<String>,
+) -> Result<SmokeReport, String> {
+    let report_path = smoke_report_path()
+        .ok_or_else(|| "updater hop requires a smoke report path".to_string())?;
+    let prior_payload = fs::read_to_string(&report_path)
+        .map_err(|error| format!("unable to read updater hop report: {error}"))?;
+    let prior: SmokeReport = serde_json::from_str(&prior_payload)
+        .map_err(|error| format!("invalid updater hop report: {error}"))?;
+    let source_pid = prior
+        .source_pid
+        .ok_or_else(|| "updater hop report is missing the source PID".to_string())?;
+
+    if prior.mode != "hop" || !prior.install_started || !prior.restart_requested {
+        return Err(
+            "updater hop did not record a completed install and restart request".to_string(),
+        );
+    }
+
+    if source_pid == process::id() {
+        return Err("updater hop relaunched with the original process ID".to_string());
+    }
+
+    Ok(SmokeReport {
+        ok: true,
+        kind: "updater".to_string(),
+        mode: "hop".to_string(),
+        package_version: prior.package_version,
+        running_version,
+        expected_version,
+        found_update: prior.found_update,
+        update_version: prior.update_version,
+        downloaded_bytes: prior.downloaded_bytes,
+        install_started: true,
+        restart_requested: true,
+        restarted: true,
+        source_pid: Some(source_pid),
+        final_pid: Some(process::id()),
+        error: None,
+    })
+}
+
+fn smoke_report_path() -> Option<String> {
+    [
+        "DUSTWAVE_SMOKE_REPORT",
+        "DUSTWAVE_DESKTOP_SMOKE_REPORT",
+        "DUSTWAVE_UPDATER_SMOKE_REPORT",
+    ]
+    .into_iter()
+    .find_map(|name| env::var(name).ok())
 }
 
 fn emit_report(report: &SmokeReport) {

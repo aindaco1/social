@@ -29,6 +29,26 @@ function plistValue(plistPath, key) {
     return String(result.stdout || '').trim();
 }
 
+async function waitForReport(reportFile, predicate, deadline) {
+    let lastError;
+
+    while (Date.now() < deadline) {
+        try {
+            const report = JSON.parse(await readFile(reportFile, 'utf8'));
+
+            if (predicate(report)) {
+                return report;
+            }
+        } catch (error) {
+            lastError = error;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    throw new Error(`Updater smoke did not produce its final report before timeout${lastError ? `: ${lastError}` : '.'}`);
+}
+
 if (process.platform !== 'darwin') {
     console.log('Skipping updater smoke test on non-macOS host.');
     process.exit(0);
@@ -86,6 +106,7 @@ try {
         stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
+    const deadline = Date.now() + timeoutMs;
 
     child.stdout.on('data', (chunk) => {
         output += chunk;
@@ -98,7 +119,7 @@ try {
         const timeout = setTimeout(() => {
             child.kill();
             reject(new Error(`Updater smoke timed out after ${timeoutMs}ms.`));
-        }, timeoutMs);
+        }, Math.max(1, deadline - Date.now()));
 
         child.once('error', (error) => {
             clearTimeout(timeout);
@@ -109,7 +130,9 @@ try {
             resolve(code ?? 1);
         });
     });
-    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    const report = mode === 'hop'
+        ? await waitForReport(reportPath, (candidate) => candidate.restarted === true, deadline)
+        : JSON.parse(await readFile(reportPath, 'utf8'));
 
     if (exitCode !== 0 || !report.ok || report.kind !== 'updater' || !report.found_update) {
         throw new Error(`Updater smoke failed: ${JSON.stringify(report)}${output.trim() ? `\n${output.trim()}` : ''}`);
@@ -123,6 +146,20 @@ try {
         throw new Error(`Updater install smoke did not start installation: ${JSON.stringify(report)}`);
     }
 
+    if (mode === 'hop') {
+        if (!report.restart_requested || !report.restarted) {
+            throw new Error(`Updater hop did not complete its restart: ${JSON.stringify(report)}`);
+        }
+
+        if (!Number.isInteger(report.source_pid) || !Number.isInteger(report.final_pid) || report.source_pid === report.final_pid) {
+            throw new Error(`Updater hop did not transition to a new process: ${JSON.stringify(report)}`);
+        }
+
+        if (report.running_version !== expectedVersion) {
+            throw new Error(`Updater hop relaunched version ${report.running_version}; expected ${expectedVersion}.`);
+        }
+    }
+
     if (mode !== 'download') {
         const installedVersion = plistValue(plistPath, 'CFBundleShortVersionString');
 
@@ -131,7 +168,8 @@ try {
         }
     }
 
-    console.log(`Updater ${mode} smoke passed for ${report.package_version} -> ${report.update_version} (${report.downloaded_bytes} bytes).`);
+    const processProof = mode === 'hop' ? `, PID ${report.source_pid} -> ${report.final_pid}` : '';
+    console.log(`Updater ${mode} smoke passed for ${report.package_version} -> ${report.update_version} (${report.downloaded_bytes} bytes${processProof}).`);
 } finally {
     if (child && !child.killed && child.exitCode === null) {
         child.kill();
