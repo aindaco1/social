@@ -29,19 +29,19 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 ## Published release evidence
 
-[Dust Wave Social v0.1.3](https://github.com/aindaco1/social/releases/tag/v0.1.3) was published on 2026-08-19 from commit `287fa6557dc2b00849694c44e9b38b9c9449bdcc` for Apple Silicon macOS.
+[Dust Wave Social v0.1.4](https://github.com/aindaco1/social/releases/tag/v0.1.4) was published on 2026-08-20 from commit `8053eec852e5da09fd5e7a3630f3a69ea9ddf438` for Apple Silicon macOS.
 
-- Apple accepted app submission `4c9eb7a2-b5ac-4b3f-991e-8b00004d2594`.
-- Apple accepted DMG submission `7c474943-65a4-4c76-902e-06a871b04ca4`; stapler validation and Gatekeeper assessment passed.
-- Published DMG SHA-256: `ca4a4bb9d3eac7f223c4ad3df46c5370034e73c718644f3c6f10a66e60237850`.
-- Published updater archive SHA-256: `088b3a1d32b214ae97adb1a64468a4ece1e71075c04c158d2f215f58350ec1de`.
-- Published `latest.json` SHA-256: `e6f67e9a19dbc0fc49aae20059963dbd7feea877f3646e3d89445bc371379abc`.
-- The protected tag workflow downloaded the public 0.1.2 app, installed the signed 0.1.3 update, and verified the staged app bundle changed to 0.1.3 after downloading all 45,570,815 updater bytes.
-- An independent post-publication download reproduced every published hash, confirmed the manifest's signed 0.1.3 updater URL, validated the stapled DMG ticket, passed Gatekeeper assessment and disk-image verification, and verified the extracted updater app's code signature and bundle version.
+- Apple accepted app submission `55a8b549-8b16-4c50-9bdf-002f1872e8ce`.
+- Apple accepted DMG submission `00598c1c-5806-4138-b1be-9fc4397d1a70`; stapler validation and Gatekeeper assessment passed.
+- Published DMG SHA-256: `473121085edbf732d9baf19ae15e15d2ab9c6ee7ea4d6547215847445603daf6`.
+- Published updater archive SHA-256: `09522ae5ac576ebe92799d05f01616a5991a71c27b9f4f54cf5910fbd23f46ab`.
+- Published `latest.json` SHA-256: `6ad3d48c0c444a02ebfd4c6022297a3e0f634ad1829a0e5257371a1663c9833e`.
+- The protected tag workflow downloaded the public 0.1.3 app, installed the signed 0.1.4 update, and verified the staged app bundle changed to 0.1.4 after downloading all 45,553,385 updater bytes.
+- An independent post-publication download reproduced all five GitHub asset digests, confirmed the public latest manifest and signature refer to 0.1.4, validated the stapled DMG ticket and `/Applications` layout, passed Gatekeeper and disk-image verification, and verified both the mounted and updater-archive apps' code signatures and bundle versions.
 
 The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
-Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 DMG over the existing app once. Version 0.1.4 is the first release candidate for an end-to-end updater hop from the fixed 0.1.3 client.
+Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 DMG over the existing app once. Version 0.1.4 provides the first verified updater hop from the fixed 0.1.3 client; hands-on update, relaunch, app-data, and Services acceptance remain operator checks.
 
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
@@ -57,7 +57,7 @@ Release state: no complete local release candidate; recover or rebuild the missi
 ## Artifacts
 
 - Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.4_aarch64.dmg`
-- Recorded notarization submission (verify it matches this DMG): `7c474943-65a4-4c76-902e-06a871b04ca4`
+- Recorded notarization submission (verify it matches this DMG): `00598c1c-5806-4138-b1be-9fc4397d1a70`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
@@ -118,7 +118,7 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Preserve the published 0.1.3 DMG and updater assets as the rollback baseline for 0.1.4.
+1. Preserve the published 0.1.4 DMG and updater assets with 0.1.3 as the rollback baseline.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
