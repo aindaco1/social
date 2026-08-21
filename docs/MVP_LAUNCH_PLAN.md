@@ -29,15 +29,18 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 ## Published release evidence
 
-[Dust Wave Social v0.1.4](https://github.com/aindaco1/social/releases/tag/v0.1.4) was published on 2026-08-20 from commit `8053eec852e5da09fd5e7a3630f3a69ea9ddf438` for Apple Silicon macOS.
+[Dust Wave Social v0.1.5](https://github.com/aindaco1/social/releases/tag/v0.1.5) was published on 2026-08-21 from commit `915c47d664f7c3e894603109f1ee5b60cb952f89` for Apple Silicon macOS.
 
-- Apple accepted app submission `55a8b549-8b16-4c50-9bdf-002f1872e8ce`.
-- Apple accepted DMG submission `00598c1c-5806-4138-b1be-9fc4397d1a70`; stapler validation and Gatekeeper assessment passed.
-- Published DMG SHA-256: `473121085edbf732d9baf19ae15e15d2ab9c6ee7ea4d6547215847445603daf6`.
-- Published updater archive SHA-256: `09522ae5ac576ebe92799d05f01616a5991a71c27b9f4f54cf5910fbd23f46ab`.
-- Published `latest.json` SHA-256: `6ad3d48c0c444a02ebfd4c6022297a3e0f634ad1829a0e5257371a1663c9833e`.
-- The protected tag workflow downloaded the public 0.1.3 app, installed the signed 0.1.4 update, and verified the staged app bundle changed to 0.1.4 after downloading all 45,553,385 updater bytes.
-- An independent post-publication download reproduced all five GitHub asset digests, confirmed the public latest manifest and signature refer to 0.1.4, validated the stapled DMG ticket and `/Applications` layout, passed Gatekeeper and disk-image verification, and verified both the mounted and updater-archive apps' code signatures and bundle versions.
+- Apple accepted app submission `876a774f-c12b-4721-998f-f4fc91858328`.
+- Apple accepted DMG submission `3421173b-517c-4d7e-8c5d-b424c72ae9b4`; stapler validation and Gatekeeper assessment passed.
+- Published DMG SHA-256: `12e506ab40deef0bbdd1b28bba60bf0bf48b0b0ba09a983ddb00b2a64a811fb1`.
+- Published updater archive SHA-256: `a3659f94450fcd4c2a1d3f2aa38b2ef6f56e6eed9ea4156c6b86076d607f1b7b`.
+- Published updater signature SHA-256: `e8323874e1eabe424a6fd0cf945dea156b42844f38325be957548c7a0a6edbe2`.
+- Published app ZIP SHA-256: `8c65722717dcf62231c2a4c6774ca71ec3a85b80c99d1aa439ae0e1360feb759`.
+- Published `latest.json` SHA-256: `99b9a40b578355767e412c696265b5bb78082b90ef60e14653581dc225ed583d`.
+- The protected tag workflow passed release checks, signing, app and DMG notarization/stapling, strict artifact verification, publication, and public manifest verification. Its first process-hop assertion correctly failed closed because it asked 0.1.4 to execute restart code introduced by the replacement 0.1.5 bundle, so the workflow returned the release to draft.
+- Corrected bridge acceptance then downloaded the public 0.1.4 app, installed all 45,590,055 signed updater bytes, verified the staged bundle changed to 0.1.5, and launched that installed app under PID 91355 after the 0.1.4 process exited as PID 91280. The release was republished only after that evidence passed.
+- An independent post-publication download reproduced all five GitHub asset digests, matched the live and published manifests and updater signature, validated the stapled DMG ticket and `/Applications` layout, passed Gatekeeper and disk-image verification, and verified both the mounted and updater-archive apps' code signatures and bundle versions.
 
 The first 0.1.1 candidate passed signing, notarization, artifact checks, and updater installation, but its workflow incorrectly checked the untouched source app after updating a canonical staged copy. The fail-closed workflow returned that candidate to draft. Version 0.1.2 moved the version assertion into the staged-app harness and published only after the corrected hop passed. A second local packaged-app download smoke timed out on the preserved local 0.1.0 build even though the same archive downloaded directly in 1.55 seconds, so hands-on acceptance from the operator's installed app remains required. Version 0.1.0 remains the known-good rollback release.
 
@@ -59,7 +62,7 @@ Release state: no complete local release candidate; recover or rebuild the missi
 ## Artifacts
 
 - Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.5_aarch64.dmg`
-- Recorded notarization submission (verify it matches this DMG): `00598c1c-5806-4138-b1be-9fc4397d1a70`
+- Recorded notarization submission (verify it matches this DMG): `3421173b-517c-4d7e-8c5d-b424c72ae9b4`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
@@ -120,14 +123,14 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Preserve the published 0.1.4 DMG and updater assets as the rollback baseline for 0.1.5.
+1. Preserve the published 0.1.5 DMG and updater assets with 0.1.4 as the rollback baseline.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Start from the installed 0.1.4 app, then complete hands-on update, automatic relaunch, and app-data acceptance with 0.1.5.
+8. Start from the installed 0.1.4 app, complete the one-time manual reopen into 0.1.5, verify app data, then use the following signed release to accept automatic relaunch.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
