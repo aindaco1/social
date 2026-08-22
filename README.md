@@ -6,9 +6,9 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-Version 0.1.5 is the current published release for Apple Silicon macOS. It is distributed as a signed, notarized, and stapled DMG with signed updater assets. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
+Version 0.1.6 is the current published release for Apple Silicon macOS. It is distributed as a signed, notarized, and stapled DMG with signed updater assets. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
 
-The protected release workflow verified the one-time 0.1.4-to-0.1.5 updater bridge by replacing the signed app bundle and launching the installed 0.1.5 app in a new process. Version 0.1.5 moves future update installation and restart into one Rust-side operation; the next signed release must prove the automatic process hop. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence.
+The protected v0.1.6 release workflow automatically installed the public signed update over a staged public v0.1.5 app and verified that the replacement relaunched as v0.1.6 in a new process. Version 0.1.6 also ships the simplified nine-destination workspace, contextual post and label editing, and one-to-one regression coverage for 46 documented operator flows. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence.
 
 Run the current readiness audit instead of copying status counts into another document:
 
