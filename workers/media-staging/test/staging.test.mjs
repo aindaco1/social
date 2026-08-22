@@ -73,6 +73,61 @@ test('staging rejects missing auth and MIME signature mismatch', async () => {
     assert.equal((await mismatch.json()).error, 'media_signature_mismatch');
 });
 
+test('accepts an additive operator token without invalidating the primary token', async () => {
+    const env = testEnv({ MEDIA_STAGING_TOKEN_NEXT: 'next-staging-secret' });
+
+    for (const token of ['staging-secret', 'next-staging-secret']) {
+        const response = await stageRequest(env, token);
+
+        assert.equal(response.status, 200);
+    }
+});
+
+test('pairs a device with a one-time code and accepts its device token', async () => {
+    const env = testEnv({ MEDIA_STAGING_TOKEN_NEXT: 'next-staging-secret' });
+    const createResponse = await worker.fetch(new Request(
+        'https://media.example/api/enrollments',
+        {
+            method: 'POST',
+            headers: {
+                Authorization: 'Bearer next-staging-secret',
+                'content-type': 'application/json',
+            },
+            body: JSON.stringify({ label: 'Editing Mac' }),
+        },
+    ), env);
+    const enrollment = await createResponse.json();
+
+    assert.equal(createResponse.status, 201);
+    assert.match(enrollment.enrollment_code, /^dwse_[A-Za-z0-9_-]{40,}$/);
+
+    const enrollResponse = await worker.fetch(new Request(
+        'https://media.example/api/enroll',
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ enrollment_code: enrollment.enrollment_code }),
+        },
+    ), env);
+    const paired = await enrollResponse.json();
+
+    assert.equal(enrollResponse.status, 201);
+    assert.match(paired.token, /^dwms_[A-Za-z0-9_-]{40,}$/);
+    assert.equal((await stageRequest(env, paired.token)).status, 200);
+
+    const reusedResponse = await worker.fetch(new Request(
+        'https://media.example/api/enroll',
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ enrollment_code: enrollment.enrollment_code }),
+        },
+    ), env);
+
+    assert.equal(reusedResponse.status, 404);
+    assert.equal((await reusedResponse.json()).error, 'enrollment_code_not_found');
+});
+
 test('cleanup removes expired staged media', async () => {
     const env = testEnv();
 
@@ -157,6 +212,20 @@ function pngBytes() {
     ]);
 }
 
+function stageRequest(env, token) {
+    return worker.fetch(new Request(
+        'https://media.example/api/media/stage',
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'content-type': 'image/png',
+            },
+            body: pngBytes(),
+        },
+    ), env);
+}
+
 class R2BucketMock {
     constructor() {
         this.objects = new Map();
@@ -173,6 +242,10 @@ class R2BucketMock {
     }
 
     async get(key) {
+        return this.objects.get(key) || null;
+    }
+
+    async head(key) {
         return this.objects.get(key) || null;
     }
 

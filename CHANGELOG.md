@@ -4,6 +4,13 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.7 - 2026-08-22
+
+- Replaced the separate all-provider credential diagnostics matrix with contextual readiness, missing-field guidance, and on-demand settings for the selected provider.
+- Added one-time Instagram Local Media pairing so ordinary users no longer need a reusable Cloudflare token, while retaining advanced manual configuration for recovery.
+- Kept no-op background maintenance silent and consolidated batch setup-copy actions into one disclosure without removing capabilities.
+- Signed local development launches with the stable production identifier when a Developer ID identity is available, preventing repeated macOS Keychain authorization prompts while keeping unsigned builds environment-only.
+
 ## 0.1.6 - 2026-08-22
 
 - Reorganized the complete Social workspace into nine grouped destinations, consolidating account and provider setup under Connections and separating composing from the Post library without removing capabilities.

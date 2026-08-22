@@ -84,6 +84,9 @@ const config = {
             bucket_name: bucketName,
         },
     ],
+    secrets: {
+        required: ['MEDIA_STAGING_TOKEN'],
+    },
 };
 
 await mkdir(workerDirectory, { recursive: true });

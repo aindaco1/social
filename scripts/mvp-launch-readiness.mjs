@@ -375,7 +375,7 @@ record(
 
 record(
     'manual',
-    'Media Staging token saved in Connections > Provider setup and Instagram local-media acceptance',
+    'Instagram Local Media paired in Connections > Provider setup and local-image acceptance',
     'requires launch Mac Keychain entry and live Instagram publish validation',
 );
 

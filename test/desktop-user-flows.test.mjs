@@ -185,12 +185,17 @@ const flowContracts = [
     {
         id: 'SVC-01',
         name: 'configure and save provider services',
-        markers: [['app', 'const saveServiceSettings = async'], ['app', "invoke('save_service_credential'"], ['app', "invoke('save_service'"], ['app', 'role="status" aria-live="polite"']],
+        markers: [['app', 'const saveServiceSettings = async'], ['app', "invoke('save_service_credential'"], ['app', "invoke('save_service'"], ['app', 'const activeServiceCredentialSummary = computed'], ['app', 'Edit Settings'], ['app', 'role="status" aria-live="polite"']],
     },
     {
         id: 'SVC-02',
         name: 'open and copy provider setup without secrets',
-        markers: [['app', 'const copyServiceSetupField = async'], ['app', 'const copyProviderSetupBundle = async'], ['app', 'Provider setup packet copied without secret values.']],
+        markers: [['app', 'const copyServiceSetupField = async'], ['app', 'const copyProviderSetupBundle = async'], ['app', '<summary>Share setup</summary>'], ['app', 'Provider setup packet copied without secret values.']],
+    },
+    {
+        id: 'SVC-03',
+        name: 'pair this Mac for Instagram local-image publishing',
+        markers: [['app', 'const enrollMediaStaging = async () =>'], ['app', "invoke('enroll_media_staging'"], ['app', 'autocomplete="one-time-code"'], ['app', 'This Mac is paired'], ['app', 'Advanced Manual Setup'], ['app', 'The setup code cannot be reused.']],
     },
     {
         id: 'RPT-01',
@@ -225,7 +230,7 @@ const flowContracts = [
     {
         id: 'SYS-01',
         name: 'review actionable system health',
-        markers: [['app', 'System Health'], ['app', 'health.issues'], ['app', "view: issue.title === 'Missing active service credentials' ? 'connections' : 'system'"], ['app', "connectionTab: issue.title === 'Missing active service credentials' ? 'services' : undefined"]],
+        markers: [['app', 'System Health'], ['app', 'health.issues'], ['app', "['Missing active service credentials', 'Instagram local media setup needed'].includes(issue.title)"], ['app', "service: issue.title === 'Instagram local media setup needed' ? 'media_staging' : undefined"]],
     },
     {
         id: 'SYS-02',

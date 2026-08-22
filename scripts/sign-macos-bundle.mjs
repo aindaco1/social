@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { signLocalMacosCode } from './lib/macos-local-signing.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
@@ -33,8 +34,8 @@ if (envValue('DUSTWAVE_SKIP_ADHOC_SIGN') === 'true') {
     process.exit(0);
 }
 
-if (envValue('APPLE_CERTIFICATE') || envValue('APPLE_SIGNING_IDENTITY')) {
-    console.log('Skipping ad-hoc signing because Apple signing variables are present.');
+if (envValue('APPLE_CERTIFICATE') && !envValue('APPLE_SIGNING_IDENTITY')) {
+    console.log('Skipping local signing because certificate-based signing is configured upstream.');
     process.exit(0);
 }
 
@@ -60,19 +61,16 @@ for (const appPath of apps) {
         process.exit(clearAttributes.status || 1);
     }
 
-    const sign = run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appPath]);
+    try {
+        const signing = signLocalMacosCode(appPath, { deep: true });
+        const signingLabel = signing.stable ? signing.identity : 'an ad-hoc identity';
+        console.log(`Signed ${path.relative(projectRoot, appPath)} with ${signingLabel}.`);
 
-    if (sign.status !== 0) {
-        console.error(sign.stderr || sign.stdout || `Failed to sign ${appPath}`);
-        process.exit(sign.status || 1);
+        if (!signing.stable) {
+            console.warn('This bundle will use environment-only credentials in debug builds; install a Developer ID identity for stable Keychain access.');
+        }
+    } catch (error) {
+        console.error(error.message);
+        process.exit(1);
     }
-
-    const verify = run('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
-
-    if (verify.status !== 0) {
-        console.error(verify.stderr || verify.stdout || `Failed to verify ${appPath}`);
-        process.exit(verify.status || 1);
-    }
-
-    console.log(`Ad-hoc signed ${path.relative(projectRoot, appPath)}`);
 }

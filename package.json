@@ -1,6 +1,6 @@
 {
     "name": "social",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "private": true,
     "type": "module",
     "scripts": {
@@ -9,7 +9,7 @@
         "docs:check": "node scripts/check-docs.mjs",
         "desktop:vite:dev": "vite --config vite.desktop.config.js --host 127.0.0.1 --port 1420",
         "desktop:vite:build": "vite build --config vite.desktop.config.js",
-        "desktop:dev": "tauri dev",
+        "desktop:dev": "CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER=\"node ../scripts/run-signed-macos-dev.mjs\" tauri dev",
         "desktop:build": "node scripts/build-desktop-local.mjs --dmg",
         "desktop:adhoc-sign": "node scripts/sign-macos-bundle.mjs",
         "desktop:media:prepare": "node scripts/prepare-media-sidecars.mjs",
@@ -67,6 +67,9 @@
         "media:staging:config:check": "node scripts/prepare-media-staging-config.mjs --check",
         "media:staging:wrangler:check": "npm run media:staging:config:check && npx wrangler deploy --dry-run --config workers/media-staging/wrangler.generated.jsonc",
         "media:staging:github:secrets:plan": "node scripts/configure-github-media-staging-secrets.mjs",
+        "media:staging:operator:plan": "node scripts/provision-media-staging-operator.mjs",
+        "media:staging:operator:provision": "node scripts/provision-media-staging-operator.mjs --apply",
+        "media:staging:enrollment": "node scripts/create-media-staging-enrollment.mjs",
         "media:staging:dev": "npm run media:staging:config && npx wrangler dev --config workers/media-staging/wrangler.generated.jsonc",
         "media:staging:deploy": "npm run media:staging:config:check && npx wrangler deploy --config workers/media-staging/wrangler.generated.jsonc --keep-vars",
         "media:staging:test": "node --test workers/media-staging/test/*.test.mjs"

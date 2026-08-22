@@ -233,10 +233,12 @@ const serviceDefinitions = [
     },
     {
         id: 'media_staging',
-        label: 'Media Staging',
-        description: 'Store the Cloudflare R2 Worker URL and token used to publish temporary local media URLs for providers such as Instagram.',
+        label: 'Instagram Local Media',
+        description: 'Pair this Mac once so Instagram can fetch an image stored locally while a post publishes. This is a Dust Wave service, not a Cloudflare login.',
         docsUrl: 'https://developers.cloudflare.com/r2/api/workers/workers-api-usage/',
         setupUrl: 'https://dash.cloudflare.com/',
+        setupActionLabel: 'Open Cloudflare',
+        managed: true,
         configurationSecretRef: 'secret://services/media_staging',
         setupFields: [
             { key: 'worker', label: 'Worker', value: 'dustwave-media-staging' },
@@ -244,12 +246,12 @@ const serviceDefinitions = [
             { key: 'retention', label: 'Retention', value: 'Temporary high-entropy URLs with 24 hour default TTL' },
         ],
         credentials: [
-            { field: 'client_secret', label: 'Staging Token', autocomplete: 'new-password', secret: true },
+            { field: 'client_secret', label: 'Access Token (Advanced)', autocomplete: 'new-password', secret: true },
         ],
         configuration: [
             {
                 field: 'base_url',
-                label: 'Base URL',
+                label: 'Service URL (Advanced)',
                 defaultValue: 'https://dustwave-media-staging.jogo.workers.dev',
                 input: 'text',
                 placeholder: 'https://dustwave-media-staging.jogo.workers.dev',
@@ -417,6 +419,16 @@ const formatBytes = (value) => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const formatTimestamp = (value) => {
+    if (!value) {
+        return 'Not run yet';
+    }
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+
 const pluralize = (count, singular, plural = `${singular}s`) => {
     const normalizedCount = Number(count) || 0;
 
@@ -517,6 +529,13 @@ const activeServiceTab = ref('facebook');
 const serviceCredentialDrafts = ref(JSON.parse(JSON.stringify(serviceCredentialDraftDefaults)));
 const serviceConfigurationDrafts = ref(JSON.parse(JSON.stringify(serviceConfigurationDefaults)));
 const serviceActiveDrafts = ref({ ...serviceActiveDraftDefaults });
+const serviceSettingsOpen = ref({});
+const mediaStagingEnrollmentCode = ref('');
+const mediaStagingEnrollmentRunning = ref(false);
+const mediaStagingEnrollmentMessage = ref('');
+const mediaStagingEnrollmentError = ref('');
+const mediaStagingEnrollmentOpen = ref(false);
+const mediaStagingAdvancedOpen = ref(false);
 const twitterOAuthDraft = ref({
     redirect_uri: 'http://localhost/callback',
     code: '',
@@ -723,6 +742,7 @@ const maintenanceSummary = ref(null);
 const desktopMaintenanceRunning = ref(false);
 const desktopMaintenanceError = ref('');
 const desktopMaintenanceSummary = ref(null);
+const desktopMaintenanceSummaryVisible = ref(false);
 const autoMaintenanceLastRun = ref('');
 const staleRecoveryRunning = ref(false);
 const staleRecoveryError = ref('');
@@ -873,8 +893,9 @@ const attentionNotices = computed(() => {
             severity: issue.severity === 'error' ? 'error' : 'warning',
             title: issue.title,
             detail: issue.detail,
-            view: issue.title === 'Missing active service credentials' ? 'connections' : 'system',
-            connectionTab: issue.title === 'Missing active service credentials' ? 'services' : undefined,
+            view: ['Missing active service credentials', 'Instagram local media setup needed'].includes(issue.title) ? 'connections' : 'system',
+            connectionTab: ['Missing active service credentials', 'Instagram local media setup needed'].includes(issue.title) ? 'services' : undefined,
+            service: issue.title === 'Instagram local media setup needed' ? 'media_staging' : undefined,
         });
     }
 
@@ -948,16 +969,12 @@ const reportAudienceSummary = computed(() => {
     };
 });
 
-const configuredCredentialCount = computed(() => {
-    return credentialStatuses.value.filter((status) => status.configured).length;
-});
-
 const activeCredentialCount = computed(() => {
     return serviceDefinitions.filter((service) => serviceReady(service.id)).length;
 });
 
 const serviceReadinessSummary = computed(() => {
-    return `${activeCredentialCount.value}/${serviceDefinitions.length} active`;
+    return `${activeCredentialCount.value} of ${serviceDefinitions.length} ready`;
 });
 
 const activeServiceDefinition = computed(() => {
@@ -976,8 +993,23 @@ const activeServiceConfiguredFields = computed(() => {
     return new Map((activeServiceStatus.value?.fields || []).map((field) => [field.field, field]));
 });
 
+const activeServiceCredentialSummary = computed(() => {
+    const fields = activeServiceStatus.value?.fields || [];
+    const configured = fields.filter((field) => field.configured).length;
+    const credentialLabel = fields.length === 1 ? 'credential' : 'credentials';
+    const storageLabel = configured === fields.length && fields.length
+        ? 'available'
+        : 'set';
+
+    return `${configured} of ${fields.length} ${credentialLabel} ${storageLabel}`;
+});
+
 const activeServiceIsReady = computed(() => {
     return serviceReady(activeServiceTab.value);
+});
+
+const activeServiceSettingsOpen = computed(() => {
+    return Boolean(serviceSettingsOpen.value[activeServiceTab.value]);
 });
 
 const systemLogEntryCount = computed(() => {
@@ -1027,7 +1059,7 @@ const systemTechnicalRows = computed(() => [
     },
     {
         label: 'Auto maintenance',
-        value: autoMaintenanceLastRun.value || 'Not run yet',
+        value: formatTimestamp(autoMaintenanceLastRun.value),
     },
 ]);
 
@@ -3763,6 +3795,7 @@ const runDesktopMaintenance = async (options = {}) => {
 
     const background = options?.background === true;
     desktopMaintenanceRunning.value = true;
+    desktopMaintenanceSummaryVisible.value = false;
     autoMaintenanceLastRun.value = new Date().toISOString();
 
     if (!background) {
@@ -3779,11 +3812,13 @@ const runDesktopMaintenance = async (options = {}) => {
             desktopMaintenanceSummary.value?.resolved_state?.cancelled_jobs_deleted > 0 ||
             desktopMaintenanceSummary.value?.resolved_state?.expired_rate_limits_cleared > 0 ||
             desktopMaintenanceSummary.value?.media?.deleted > 0;
+        desktopMaintenanceSummaryVisible.value = !background || changed;
 
         if (!background || changed) {
             await load();
         }
     } catch (error) {
+        desktopMaintenanceSummaryVisible.value = false;
         desktopMaintenanceError.value = String(error);
     } finally {
         desktopMaintenanceRunning.value = false;
@@ -3832,6 +3867,10 @@ const openAttentionNotice = async (notice) => {
 
     if (notice.connectionTab) {
         activeConnectionTab.value = notice.connectionTab;
+    }
+
+    if (notice.service) {
+        activeServiceTab.value = notice.service;
     }
 
     if (notice.status) {
@@ -3936,6 +3975,32 @@ const clearServiceFeedback = () => {
     serviceSaveMessage.value = '';
 };
 
+const setServiceSettingsOpen = (serviceName, open) => {
+    serviceSettingsOpen.value = {
+        ...serviceSettingsOpen.value,
+        [serviceName]: open,
+    };
+};
+
+const openActiveServiceSettings = () => {
+    clearServiceFeedback();
+    setServiceSettingsOpen(activeServiceDefinition.value.id, true);
+};
+
+const cancelActiveServiceSettings = () => {
+    const serviceName = activeServiceDefinition.value.id;
+
+    clearServiceFeedback();
+    serviceCredentialDrafts.value = {
+        ...serviceCredentialDrafts.value,
+        [serviceName]: {
+            ...(serviceCredentialDraftDefaults[serviceName] || {}),
+        },
+    };
+    syncServiceConfigurationDrafts();
+    setServiceSettingsOpen(serviceName, false);
+};
+
 const serviceConfigurationPayload = (serviceName) => {
     return {
         ...(serviceConfigurationDrafts.value[serviceName] || {}),
@@ -3986,8 +4051,14 @@ const serviceTabStatusText = (serviceName) => {
     return status?.configured ? 'inactive' : 'missing';
 };
 
-const serviceCredentialInputHint = (fieldName) => {
+const serviceCredentialInputHint = (serviceName, fieldName) => {
     const field = activeServiceConfiguredFields.value.get(fieldName);
+
+    if (serviceName === 'media_staging') {
+        return field?.configured
+            ? 'Paired on this Mac — leave blank to keep access'
+            : 'Advanced · use only when a pairing code is unavailable';
+    }
 
     if (field?.configured) {
         return 'Available — leave blank to keep current value';
@@ -3998,6 +4069,59 @@ const serviceCredentialInputHint = (fieldName) => {
     }
 
     return 'Required';
+};
+
+const enrollMediaStaging = async () => {
+    const enrollmentCode = mediaStagingEnrollmentCode.value.trim();
+    const baseUrl = mediaStagingBaseUrl();
+
+    if (!enrollmentCode) {
+        mediaStagingEnrollmentMessage.value = '';
+        mediaStagingEnrollmentError.value = 'Enter the one-time setup code provided by Dust Wave.';
+        return;
+    }
+
+    if (!baseUrl) {
+        mediaStagingEnrollmentMessage.value = '';
+        mediaStagingEnrollmentError.value = 'The Instagram Local Media service URL must use HTTPS.';
+        return;
+    }
+
+    mediaStagingEnrollmentRunning.value = true;
+    mediaStagingEnrollmentError.value = '';
+    mediaStagingEnrollmentMessage.value = '';
+
+    try {
+        await invoke('enroll_media_staging', {
+            baseUrl,
+            enrollmentCode,
+        });
+        mediaStagingEnrollmentCode.value = '';
+        await load();
+        mediaStagingEnrollmentMessage.value = 'This Mac is paired for Instagram local-image publishing. The setup code cannot be reused.';
+        mediaStagingEnrollmentOpen.value = false;
+    } catch (error) {
+        mediaStagingEnrollmentError.value = String(error);
+    } finally {
+        mediaStagingEnrollmentRunning.value = false;
+    }
+};
+
+const clearMediaStagingEnrollmentFeedback = () => {
+    mediaStagingEnrollmentMessage.value = '';
+    mediaStagingEnrollmentError.value = '';
+};
+
+const replaceMediaStagingEnrollment = () => {
+    clearMediaStagingEnrollmentFeedback();
+    mediaStagingEnrollmentCode.value = '';
+    mediaStagingEnrollmentOpen.value = true;
+};
+
+const cancelMediaStagingEnrollment = () => {
+    clearMediaStagingEnrollmentFeedback();
+    mediaStagingEnrollmentCode.value = '';
+    mediaStagingEnrollmentOpen.value = false;
 };
 
 const serviceCredentialStatusText = (service, credential) => {
@@ -4100,6 +4224,9 @@ const saveServiceSettings = async (serviceName = activeServiceTab.value) => {
             ? `Service is active${serviceReady(serviceName) ? ' and ready' : ', but setup is incomplete'}.`
             : 'Service is inactive.';
         serviceSaveMessage.value = `${definition.label} settings saved. ${credentialSummary} ${readinessSummary}`;
+        if (!definition.managed && serviceReady(serviceName)) {
+            setServiceSettingsOpen(serviceName, false);
+        }
     } catch (error) {
         clearSavedServiceCredentialDrafts(serviceName, savedFields);
         let stateRestoreWarning = '';
@@ -5976,9 +6103,9 @@ onUnmounted(() => {
                             >
                                 Run Maintenance
                             </button>
-                            <details class="system-action-menu">
+                            <details class="action-menu">
                                 <summary>More actions</summary>
-                                <div class="system-action-menu-content">
+                                <div class="action-menu-content">
                                     <button
                                         type="button"
                                         class="inline-button"
@@ -6047,12 +6174,16 @@ onUnmounted(() => {
                         {{ maintenanceSummary.cancelled_jobs_deleted }} cancelled work item(s), and
                         {{ maintenanceSummary.expired_rate_limits_cleared }} expired provider limit(s)
                     </div>
-                    <div v-if="desktopMaintenanceSummary" class="form-note">
-                        Maintenance cleared {{ desktopMaintenanceSummary.resolved_state.completed_jobs_deleted }} completed work item(s),
-                        {{ desktopMaintenanceSummary.resolved_state.cancelled_jobs_deleted }} cancelled work item(s),
-                        {{ desktopMaintenanceSummary.resolved_state.expired_rate_limits_cleared }} expired provider limit(s), and
-                        {{ desktopMaintenanceSummary.media.deleted }} orphaned media file(s)
-                        <template v-if="autoMaintenanceLastRun"> · last check {{ autoMaintenanceLastRun }}</template>
+                    <div v-if="desktopMaintenanceSummary && desktopMaintenanceSummaryVisible" class="form-note">
+                        <template v-if="desktopMaintenanceSummary.resolved_state.completed_jobs_deleted || desktopMaintenanceSummary.resolved_state.cancelled_jobs_deleted || desktopMaintenanceSummary.resolved_state.expired_rate_limits_cleared || desktopMaintenanceSummary.media.deleted">
+                            Maintenance cleared {{ desktopMaintenanceSummary.resolved_state.completed_jobs_deleted }} completed work item(s),
+                            {{ desktopMaintenanceSummary.resolved_state.cancelled_jobs_deleted }} cancelled work item(s),
+                            {{ desktopMaintenanceSummary.resolved_state.expired_rate_limits_cleared }} expired provider limit(s), and
+                            {{ desktopMaintenanceSummary.media.deleted }} orphaned media file(s).
+                        </template>
+                        <template v-else>
+                            Maintenance complete. Nothing needed cleanup.
+                        </template>
                     </div>
                     <div v-if="staleRecoverySummary" class="form-note">
                         Requeued {{ staleRecoverySummary.requeued_jobs }} stale processing item(s)
@@ -6878,21 +7009,26 @@ onUnmounted(() => {
                                     <small>{{ serviceReadinessSummary }}</small>
                                 </div>
                                 <div class="row-actions">
-                                    <button
-                                        type="button"
-                                        class="inline-button"
-                                        @click="copyProviderSetupBundle(false)"
-                                    >
-                                        {{ serviceSetupCopied === 'bundle:all' ? 'Copied Setup' : 'Copy All Setup' }}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-button"
-                                        @click="copyProviderSetupBundle(true)"
-                                    >
-                                        {{ serviceSetupCopied === 'bundle:missing' ? 'Copied Missing' : 'Copy Missing' }}
-                                    </button>
-                                    <span>{{ configuredCredentialCount }}/{{ credentialStatuses.length }} configured</span>
+                                    <details class="action-menu provider-setup-menu">
+                                        <summary>Share setup</summary>
+                                        <div class="action-menu-content">
+                                            <button
+                                                type="button"
+                                                class="inline-button"
+                                                :disabled="activeCredentialCount === serviceDefinitions.length"
+                                                @click="copyProviderSetupBundle(true)"
+                                            >
+                                                {{ serviceSetupCopied === 'bundle:missing' ? 'Copied Missing Setup' : 'Copy Missing Setup' }}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="inline-button"
+                                                @click="copyProviderSetupBundle(false)"
+                                            >
+                                                {{ serviceSetupCopied === 'bundle:all' ? 'Copied All Setup' : 'Copy All Setup' }}
+                                            </button>
+                                        </div>
+                                    </details>
                                 </div>
                             </header>
                             <div v-if="serviceSetupCopied === 'bundle:all' || serviceSetupCopied === 'bundle:missing'" class="form-note">
@@ -6920,54 +7056,128 @@ onUnmounted(() => {
                                     <div>
                                         <strong>{{ activeServiceDefinition.label }}</strong>
                                         <small>{{ activeServiceDefinition.description }}</small>
+                                        <small class="service-credential-summary">{{ activeServiceCredentialSummary }}</small>
                                     </div>
                                     <span :class="['mini-state', activeServiceIsReady ? 'is-ok' : 'is-muted']">
                                         {{ serviceStatusText(activeServiceDefinition.id) }}
                                     </span>
                                 </header>
-                                <div class="service-link-row">
-                                    <button type="button" class="inline-button" @click="openServiceUrl(activeServiceDefinition.setupUrl)">
-                                        Create App
-                                    </button>
-                                    <button
-                                        v-if="activeServiceDefinition.docsUrl"
-                                        type="button"
-                                        class="inline-button"
-                                        @click="openServiceUrl(activeServiceDefinition.docsUrl)"
-                                    >
-                                        Read Docs
-                                    </button>
-                                    <button
-                                        v-if="activeServiceDefinition.setupFields?.length"
-                                        type="button"
-                                        class="inline-button"
-                                        @click="copyServiceSetup(activeServiceDefinition)"
-                                    >
-                                        {{ serviceSetupCopied === `${activeServiceDefinition.id}:setup` ? 'Copied Setup' : 'Copy Setup' }}
-                                    </button>
-                                </div>
-                                <div v-if="activeServiceDefinition.setupFields?.length" class="service-setup-grid">
-                                    <div
-                                        v-for="field in activeServiceDefinition.setupFields"
-                                        :key="field.key"
-                                        class="service-setup-item"
-                                    >
-                                        <span>{{ field.label }}</span>
-                                        <code>{{ serviceSetupFieldValue(activeServiceDefinition, field) }}</code>
-                                        <button
-                                            type="button"
-                                            class="inline-button"
-                                            @click="copyServiceSetupField(activeServiceDefinition, field)"
-                                        >
-                                            {{ serviceSetupCopied === `${activeServiceDefinition.id}:${field.key}` ? 'Copied' : 'Copy' }}
-                                        </button>
+                                <div
+                                    v-if="activeServiceDefinition.managed && activeServiceIsReady && !mediaStagingEnrollmentOpen"
+                                    class="service-enrollment-form service-enrollment-complete"
+                                >
+                                    <div>
+                                        <strong>This Mac is paired</strong>
+                                        <small>Instagram can fetch local images while a post publishes. No Cloudflare account or Wrangler setup is required.</small>
                                     </div>
+                                    <button type="button" class="inline-button" @click="replaceMediaStagingEnrollment">
+                                        Replace Pairing
+                                    </button>
+                                    <p v-if="mediaStagingEnrollmentMessage" class="form-note service-enrollment-feedback" role="status" aria-live="polite">
+                                        {{ mediaStagingEnrollmentMessage }}
+                                    </p>
                                 </div>
                                 <form
-                                    class="service-settings-form"
-                                    :aria-busy="serviceSaving"
-                                    @submit.prevent="saveServiceSettings(activeServiceDefinition.id)"
+                                    v-else-if="activeServiceDefinition.managed"
+                                    class="service-enrollment-form"
+                                    :aria-busy="mediaStagingEnrollmentRunning"
+                                    @submit.prevent="enrollMediaStaging"
                                 >
+                                    <div>
+                                        <strong>{{ activeServiceIsReady ? 'Replace this Mac’s pairing' : 'Pair this Mac' }}</strong>
+                                        <small>Ask Dust Wave for a one-time setup code. It expires in 15 minutes and works once. No Cloudflare account or Wrangler setup is required.</small>
+                                    </div>
+                                    <input
+                                        v-model="mediaStagingEnrollmentCode"
+                                        type="password"
+                                        autocomplete="one-time-code"
+                                        placeholder="One-time setup code"
+                                        :disabled="mediaStagingEnrollmentRunning"
+                                        @input="clearMediaStagingEnrollmentFeedback"
+                                    />
+                                    <button type="submit" :disabled="mediaStagingEnrollmentRunning || !mediaStagingEnrollmentCode.trim()">
+                                        {{ mediaStagingEnrollmentRunning ? 'Pairing…' : 'Pair This Mac' }}
+                                    </button>
+                                    <button
+                                        v-if="activeServiceIsReady"
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="mediaStagingEnrollmentRunning"
+                                        @click="cancelMediaStagingEnrollment"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <p v-if="mediaStagingEnrollmentMessage" class="form-note service-enrollment-feedback" role="status" aria-live="polite">
+                                        {{ mediaStagingEnrollmentMessage }}
+                                    </p>
+                                    <p v-if="mediaStagingEnrollmentError" class="form-error service-enrollment-feedback" role="alert">
+                                        {{ mediaStagingEnrollmentError }}
+                                    </p>
+                                </form>
+                                <button
+                                    v-if="activeServiceDefinition.managed"
+                                    type="button"
+                                    class="inline-button service-advanced-toggle"
+                                    :aria-expanded="mediaStagingAdvancedOpen"
+                                    @click="mediaStagingAdvancedOpen = !mediaStagingAdvancedOpen"
+                                >
+                                    {{ mediaStagingAdvancedOpen ? 'Hide Advanced Manual Setup' : 'Advanced Manual Setup' }}
+                                </button>
+                                <button
+                                    v-else-if="activeServiceIsReady && !activeServiceSettingsOpen"
+                                    type="button"
+                                    class="inline-button service-settings-toggle"
+                                    @click="openActiveServiceSettings"
+                                >
+                                    Edit Settings
+                                </button>
+                                <div
+                                    v-show="activeServiceDefinition.managed ? mediaStagingAdvancedOpen : (!activeServiceIsReady || activeServiceSettingsOpen)"
+                                    class="service-manual-setup"
+                                >
+                                    <div class="service-link-row">
+                                        <button type="button" class="inline-button" @click="openServiceUrl(activeServiceDefinition.setupUrl)">
+                                            {{ activeServiceDefinition.setupActionLabel || 'Create App' }}
+                                        </button>
+                                        <button
+                                            v-if="activeServiceDefinition.docsUrl"
+                                            type="button"
+                                            class="inline-button"
+                                            @click="openServiceUrl(activeServiceDefinition.docsUrl)"
+                                        >
+                                            Read Docs
+                                        </button>
+                                        <button
+                                            v-if="activeServiceDefinition.setupFields?.length"
+                                            type="button"
+                                            class="inline-button"
+                                            @click="copyServiceSetup(activeServiceDefinition)"
+                                        >
+                                            {{ serviceSetupCopied === `${activeServiceDefinition.id}:setup` ? 'Copied Setup' : 'Copy Setup' }}
+                                        </button>
+                                    </div>
+                                    <div v-if="activeServiceDefinition.setupFields?.length" class="service-setup-grid">
+                                        <div
+                                            v-for="field in activeServiceDefinition.setupFields"
+                                            :key="field.key"
+                                            class="service-setup-item"
+                                        >
+                                            <span>{{ field.label }}</span>
+                                            <code>{{ serviceSetupFieldValue(activeServiceDefinition, field) }}</code>
+                                            <button
+                                                type="button"
+                                                class="inline-button"
+                                                @click="copyServiceSetupField(activeServiceDefinition, field)"
+                                            >
+                                                {{ serviceSetupCopied === `${activeServiceDefinition.id}:${field.key}` ? 'Copied' : 'Copy' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <form
+                                        class="service-settings-form"
+                                        :aria-busy="serviceSaving"
+                                        @submit.prevent="saveServiceSettings(activeServiceDefinition.id)"
+                                    >
                                     <p class="service-security-note">
                                         Credentials entered here are stored in macOS Keychain. Leave an available field blank to keep its current value.
                                     </p>
@@ -6979,7 +7189,7 @@ onUnmounted(() => {
                                         >
                                             <label :for="`service-${activeServiceDefinition.id}-${credential.field}`">
                                                 <span>{{ credential.label }}</span>
-                                                <small>{{ serviceCredentialInputHint(credential.field) }}</small>
+                                                <small>{{ serviceCredentialInputHint(activeServiceDefinition.id, credential.field) }}</small>
                                             </label>
                                             <input
                                                 :id="`service-${activeServiceDefinition.id}-${credential.field}`"
@@ -7032,6 +7242,15 @@ onUnmounted(() => {
                                             {{ serviceSaving ? `Saving ${activeServiceDefinition.label}…` : `Save ${activeServiceDefinition.label} Settings` }}
                                         </button>
                                         <button
+                                            v-if="!activeServiceDefinition.managed && activeServiceIsReady && activeServiceSettingsOpen"
+                                            type="button"
+                                            class="inline-button"
+                                            :disabled="serviceSaving"
+                                            @click="cancelActiveServiceSettings"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
                                             v-if="activeServiceDefinition.id === 'tiktok'"
                                             type="button"
                                             class="inline-button"
@@ -7041,36 +7260,15 @@ onUnmounted(() => {
                                             Open Broker Auth
                                         </button>
                                     </div>
-                                    <p v-if="serviceSaveMessage" class="form-note service-save-feedback" role="status" aria-live="polite">
-                                        {{ serviceSaveMessage }}
-                                    </p>
-                                    <p v-if="serviceError" class="form-error service-save-feedback" role="alert">
-                                        {{ serviceError }}
-                                    </p>
-                                </form>
-                            </section>
-                            <details class="credential-diagnostics">
-                                <summary>Credential diagnostics · {{ configuredCredentialCount }}/{{ credentialStatuses.length }} configured</summary>
-                            <div class="credential-grid">
-                                <div v-for="status in credentialStatuses" :key="status.service" class="credential-card">
-                                    <div class="credential-card-header">
-                                        <strong>{{ status.label }}</strong>
-                                        <span :class="['mini-state', status.configured ? 'is-ok' : 'is-muted']">
-                                            {{ status.configured ? 'configured' : 'missing' }}
-                                        </span>
-                                    </div>
-                                    <small>{{ status.group }} · {{ status.active ? 'active' : 'inactive' }}</small>
-                                    <div class="credential-fields">
-                                        <div v-for="field in status.fields" :key="field.field" class="credential-field">
-                                            <span>{{ field.label }}</span>
-                                            <span :class="['mini-state', field.configured ? 'is-ok' : 'is-muted']">
-                                                {{ field.configured ? 'set' : field.env_vars.join(' or ') }}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    </form>
                                 </div>
-                            </div>
-                            </details>
+                                <p v-if="serviceSaveMessage" class="form-note service-save-feedback" role="status" aria-live="polite">
+                                    {{ serviceSaveMessage }}
+                                </p>
+                                <p v-if="serviceError" class="form-error service-save-feedback" role="alert">
+                                    {{ serviceError }}
+                                </p>
+                            </section>
                         </article>
 
                         <article v-if="activeView === 'posts'" class="snapshot-list">

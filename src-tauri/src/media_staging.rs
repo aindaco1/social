@@ -1,6 +1,6 @@
 use crate::secrets::{SecretError, resolve_service_credential};
 use reqwest::blocking::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs;
@@ -24,6 +24,16 @@ pub struct MediaStagingResponse {
     pub content_type: String,
     pub bytes: u64,
     pub expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MediaStagingEnrollmentRequest<'a> {
+    enrollment_code: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaStagingEnrollmentResponse {
+    token: String,
 }
 
 #[derive(Debug)]
@@ -79,11 +89,7 @@ pub fn stage_media_file(
     let base_url = request.base_url.trim().trim_end_matches('/');
     let mime_type = request.mime_type.trim();
 
-    if !base_url.starts_with("https://") {
-        return Err(MediaStagingError::Validation(
-            "media staging base URL must be HTTPS".to_string(),
-        ));
-    }
+    validate_base_url(base_url)?;
 
     if !request.file_path.exists() {
         return Err(MediaStagingError::Validation(format!(
@@ -120,19 +126,7 @@ pub fn stage_media_file(
     let status = response.status();
     let text = response.text()?;
 
-    if !status.is_success() {
-        let message = serde_json::from_str::<serde_json::Value>(&text)
-            .ok()
-            .and_then(|value| {
-                value
-                    .get("error")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
-            })
-            .unwrap_or_else(|| format!("media staging failed with HTTP {status}"));
-
-        return Err(MediaStagingError::Validation(message));
-    }
+    validate_response(status, &text, "media staging")?;
 
     let staged = serde_json::from_str::<MediaStagingResponse>(&text)?;
 
@@ -143,4 +137,115 @@ pub fn stage_media_file(
     }
 
     Ok(staged)
+}
+
+pub fn enroll_media_staging_device(
+    base_url: &str,
+    enrollment_code: &str,
+) -> Result<String, MediaStagingError> {
+    let base_url = base_url.trim().trim_end_matches('/');
+    let enrollment_code = enrollment_code.trim();
+
+    validate_base_url(base_url)?;
+
+    if enrollment_code.is_empty() {
+        return Err(MediaStagingError::Validation(
+            "one-time setup code is required".to_string(),
+        ));
+    }
+
+    let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
+    let response = client
+        .post(format!("{base_url}/api/enroll"))
+        .json(&MediaStagingEnrollmentRequest { enrollment_code })
+        .send()?;
+    let status = response.status();
+    let text = response.text()?;
+
+    validate_response(status, &text, "device pairing")?;
+    let enrollment = serde_json::from_str::<MediaStagingEnrollmentResponse>(&text)?;
+    let token = enrollment.token.trim();
+
+    if token.is_empty() {
+        return Err(MediaStagingError::Validation(
+            "device pairing did not return an access token".to_string(),
+        ));
+    }
+
+    Ok(token.to_string())
+}
+
+fn validate_base_url(base_url: &str) -> Result<(), MediaStagingError> {
+    if !base_url.starts_with("https://") {
+        return Err(MediaStagingError::Validation(
+            "Instagram local media service URL must use HTTPS".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_response(
+    status: reqwest::StatusCode,
+    text: &str,
+    operation: &str,
+) -> Result<(), MediaStagingError> {
+    if status.is_success() {
+        return Ok(());
+    }
+
+    let error = serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| format!("{operation} failed with HTTP {status}"));
+    let message = match error.as_str() {
+        "invalid_enrollment_code" => "That setup code is not valid.".to_string(),
+        "enrollment_code_not_found" => {
+            "That setup code was already used or is not recognized. Ask for a new code.".to_string()
+        }
+        "enrollment_code_expired" => {
+            "That setup code expired. Ask for a new code and try again.".to_string()
+        }
+        _ => error,
+    };
+
+    Err(MediaStagingError::Validation(message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enrollment_requires_https_and_a_code_before_network_access() {
+        assert!(
+            enroll_media_staging_device("http://media.example", "code")
+                .unwrap_err()
+                .to_string()
+                .contains("must use HTTPS")
+        );
+        assert!(
+            enroll_media_staging_device("https://media.example", "")
+                .unwrap_err()
+                .to_string()
+                .contains("setup code is required")
+        );
+    }
+
+    #[test]
+    fn enrollment_errors_are_written_for_people() {
+        let error = validate_response(
+            reqwest::StatusCode::NOT_FOUND,
+            r#"{"error":"enrollment_code_not_found"}"#,
+            "device pairing",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("already used"));
+    }
 }

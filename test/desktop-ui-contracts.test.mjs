@@ -149,14 +149,42 @@ test('Instagram is exposed as a first-class Meta account type', () => {
     assert.ok(appSource.includes("['instagram', '', '', '', 'yes', 'yes', 'Use Facebook OAuth, then choose connected Instagram accounts.']"));
 });
 
-test('media staging service requires an HTTPS Worker base URL', () => {
+test('Instagram local media offers one-time pairing and retains advanced token setup', () => {
     const mediaStagingService = sourceBetween("id: 'media_staging'", "id: 'twitter'");
 
-    assert.ok(mediaStagingService.includes("label: 'Media Staging'"));
+    assert.ok(mediaStagingService.includes("label: 'Instagram Local Media'"));
+    assert.ok(mediaStagingService.includes('managed: true'));
     assert.ok(mediaStagingService.includes("field: 'client_secret'"));
     assert.ok(mediaStagingService.includes("field: 'base_url'"));
     assert.ok(appSource.includes("normalizedServiceBaseUrl('media_staging', 'base_url')"));
     assert.ok(appSource.includes("serviceName === 'media_staging'"));
+    assert.ok(appSource.includes('const enrollMediaStaging = async () =>'));
+    assert.ok(appSource.includes("invoke('enroll_media_staging'"));
+    assert.ok(appSource.includes('autocomplete="one-time-code"'));
+    assert.ok(appSource.includes('The setup code cannot be reused.'));
+    assert.ok(appSource.includes('This Mac is paired'));
+    assert.ok(appSource.includes('No Cloudflare account or Wrangler setup is required.'));
+    assert.ok(appSource.includes("mediaStagingAdvancedOpen ? 'Hide Advanced Manual Setup' : 'Advanced Manual Setup'"));
+    assert.ok(appSource.includes('activeServiceDefinition.managed ? mediaStagingAdvancedOpen : (!activeServiceIsReady || activeServiceSettingsOpen)'));
+});
+
+test('provider diagnostics stay contextual instead of repeating every service in a separate matrix', () => {
+    assert.ok(appSource.includes('const activeServiceCredentialSummary = computed(() =>'));
+    assert.ok(appSource.includes('class="service-credential-summary"'));
+    assert.ok(appSource.includes('const activeServiceSettingsOpen = computed(() =>'));
+    assert.ok(appSource.includes('Edit Settings'));
+    assert.ok(appSource.includes('<summary>Share setup</summary>'));
+    assert.equal(appSource.includes('credential-diagnostics'), false);
+    assert.equal(appSource.includes('configuredCredentialCount'), false);
+    assert.equal(desktopStylesSource.includes('.credential-card'), false);
+    assert.equal(desktopStylesSource.includes('.credential-grid'), false);
+});
+
+test('background maintenance stays quiet when it finds nothing to clean up', () => {
+    assert.ok(appSource.includes('desktopMaintenanceSummaryVisible.value = !background || changed'));
+    assert.ok(appSource.includes('Maintenance complete. Nothing needed cleanup.'));
+    assert.ok(appSource.includes('value: formatTimestamp(autoMaintenanceLastRun.value)'));
+    assert.equal(appSource.includes('last check {{ autoMaintenanceLastRun }}'), false);
 });
 
 test('every service configuration uses one explicit save with complete feedback', () => {

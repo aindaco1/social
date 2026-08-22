@@ -56,17 +56,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: v0.1.6
+Source state: generated from local worktree with uncommitted changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.6_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.7_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `ecd8851d-ea24-4b66-9a66-486c2d41a801`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.6`
+- Updater version: `0.1.7`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 
@@ -83,7 +83,7 @@ Manual acceptance still required:
 - TikTok developer credential TIKTOK_CLIENT_KEY - from TikTok Developer Portal
 - TikTok developer credential TIKTOK_CLIENT_SECRET - from TikTok Developer Portal
 - Current release candidate notarization and stapling - submit the current DMG to Apple, wait for acceptance, staple it, and rerun strict artifact verification
-- Media Staging token saved in Connections > Provider setup and Instagram local-media acceptance - requires launch Mac Keychain entry and live Instagram publish validation
+- Instagram Local Media paired in Connections > Provider setup and local-image acceptance - requires launch Mac Keychain entry and live Instagram publish validation
 - Local AI packaged-app offline model probe and reviewed output acceptance - requires signed/stapled app test with network disabled and operator review of generated derivatives
 - X/Twitter live credential and publish acceptance - requires provider portal, live account, or separate target Mac
 - Facebook/Meta live credential and Page acceptance - requires provider portal, live account, or separate target Mac
@@ -202,7 +202,7 @@ Each provider has one `Save [Provider] Settings` action. It saves every newly en
 - Current default Graph API version: `v25.0`.
 - Required permissions depend on approved workflows and currently include `business_management`, `pages_show_list`, `read_insights`, `pages_manage_posts`, `pages_read_engagement`, `pages_manage_engagement`, `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`, and `instagram_manage_comments` when comment management is used.
 - Instagram accounts must be Business or Creator accounts connected to the required Meta/Page assets.
-- Local Instagram images require an active Media Staging service using `https://dustwave-media-staging.jogo.workers.dev` and a matching Keychain token.
+- Local Instagram images require an active Instagram Local Media service using `https://dustwave-media-staging.jogo.workers.dev` and a paired device credential in Keychain. Users pair with a short-lived, one-use code and never need Cloudflare or the reusable operator token.
 
 ### TikTok
 

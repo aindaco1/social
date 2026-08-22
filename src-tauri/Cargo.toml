@@ -1,6 +1,6 @@
 [package]
 name = "dust-wave-social"
-version = "0.1.6"
+version = "0.1.7"
 description = "Dust Wave desktop social media manager"
 authors = ["Dust Wave"]
 edition = "2024"

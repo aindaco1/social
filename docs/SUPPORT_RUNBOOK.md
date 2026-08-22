@@ -1,6 +1,6 @@
 # Dust Wave Social Support Runbook
 
-Updated: 2026-07-13
+Updated: 2026-08-22
 
 This runbook covers support actions that should be available without adding a raw database or developer panel to the production app.
 
@@ -12,6 +12,15 @@ This runbook covers support actions that should be available without adding a ra
 4. Paste the path into Finder with Go To Folder, or send the copied path to support.
 
 Do not ask operators to browse the SQLite database directly unless engineering is handling a private recovery session.
+
+## Repeated SecurityAgent prompts in local development
+
+Production credentials use the `com.dustwave.social` macOS Keychain service. A changing ad-hoc debug signature produces a new code requirement after each rebuild, so macOS can ask for access repeatedly even when the credential itself is unchanged.
+
+1. Start local development with `npm run desktop:dev`; its Cargo runner signs the debug executable with an installed Developer ID identity and the stable `com.dustwave.social` identifier before launch.
+2. Confirm `codesign -dr - src-tauri/target/debug/dust-wave-social` reports an identifier-based Apple Developer ID requirement, not a `cdhash` requirement.
+3. If no Developer ID identity is installed, keep the debug build in its default environment-only credential mode. Do not choose Always Allow for an ad-hoc requester or weaken the saved Keychain item's access controls.
+4. Use the signed production app for provider acceptance. An environment-only debug build intentionally cannot save account or provider secrets to Keychain.
 
 ## First Response For Failed Publishing
 
@@ -53,18 +62,21 @@ curl -X POST \
 
 Then revoke the TikTok app authorization in TikTok if account access may be compromised.
 
-## Media Staging Issues
+## Instagram Local Media Issues
 
 Instagram publishing of local desktop images uses the Cloudflare R2 Media Staging Worker at `https://dustwave-media-staging.jogo.workers.dev`. The Worker creates short-lived public HTTPS object URLs because Meta must fetch the image during publishing. Expired objects are cleaned up through both the authenticated cleanup endpoint and the hourly scheduled Worker trigger.
 
+For an ordinary app user, create a one-time pairing code on a provisioned operator Mac with `npm run media:staging:enrollment -- --label "Name of Mac"`. Send the code privately. The user opens Connections > Provider setup > Instagram Local Media, pastes the code under Pair this Mac, and selects Pair This Mac. They do not need a Cloudflare account, Wrangler, an R2 bucket name, or the reusable Worker token.
+
 When Instagram publishing fails before the provider publish call:
 
-1. In Connections > Provider setup, confirm Media Staging is Active, has a saved Staging Token, and uses `https://dustwave-media-staging.jogo.workers.dev` as the Base URL.
+1. In Connections > Provider setup, confirm Instagram Local Media is Active, is paired, and uses `https://dustwave-media-staging.jogo.workers.dev` as the Service URL.
 2. Open `https://dustwave-media-staging.jogo.workers.dev/api/health` and confirm the Worker responds.
 3. Confirm the selected media is a static image. MVP Instagram direct publishing does not support GIFs, videos, reels, stories, or carousels yet.
 4. Re-run the publish attempt.
-5. If staging still fails, rotate `MEDIA_STAGING_TOKEN` in Cloudflare and GitHub, then save the new token in Connections > Provider setup.
-6. If old staged objects accumulate, confirm the Worker was deployed with `triggers.crons` active or call the authenticated `/api/media/cleanup` endpoint with the staging token.
+5. If a setup code fails, issue a new code; codes expire after 15 minutes and cannot be reused.
+6. If staging still fails for every paired device, use `npm run media:staging:operator:plan` before changing secrets. Do not replace `MEDIA_STAGING_TOKEN`; the additive provisioning command preserves current installations and refuses to overwrite an existing `MEDIA_STAGING_TOKEN_NEXT`.
+7. If old staged objects accumulate, confirm the Worker was deployed with `triggers.crons` active or call the authenticated `/api/media/cleanup` endpoint with an operator token.
 
 Do not make the R2 bucket public. Public access should stay behind the Worker so object names remain high-entropy, temporary, and cleanup-aware.
 

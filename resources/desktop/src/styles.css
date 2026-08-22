@@ -1979,13 +1979,6 @@ code {
     grid-column: 1 / -1;
 }
 
-.credential-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
 .modal-backdrop {
     position: fixed;
     z-index: 80;
@@ -2471,9 +2464,65 @@ code {
     line-height: 1.35;
 }
 
+.service-provider-panel header .service-credential-summary {
+    color: #475569;
+    font-weight: 800;
+}
+
 .service-settings-form {
     display: grid;
     gap: 12px;
+}
+
+.service-enrollment-form {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.9fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+}
+
+.service-enrollment-form div {
+    display: grid;
+    gap: 3px;
+}
+
+.service-enrollment-form small {
+    color: #3f5f49;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.service-enrollment-feedback {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.service-enrollment-complete {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.service-advanced-toggle {
+    justify-self: start;
+}
+
+.service-settings-toggle {
+    justify-self: start;
+}
+
+.service-manual-setup {
+    display: grid;
+    gap: 12px;
+    padding-top: 2px;
+}
+
+@media (max-width: 900px) {
+    .service-enrollment-form {
+        grid-template-columns: 1fr;
+    }
 }
 
 .service-security-note {
@@ -2707,58 +2756,6 @@ code {
     color: #64748b;
     font-size: 12px;
     line-height: 1.35;
-}
-
-.credential-card {
-    min-width: 0;
-    padding: 10px;
-    background: #ffffff;
-    border: 1px solid #dbe1e8;
-    border-radius: 6px;
-}
-
-.credential-card-header,
-.credential-field {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.credential-card-header {
-    margin-bottom: 4px;
-}
-
-.credential-card small {
-    display: block;
-    margin-bottom: 8px;
-    color: #64748b;
-    font-size: 12px;
-    line-height: 1.35;
-}
-
-.credential-fields {
-    display: grid;
-    gap: 6px;
-}
-
-.credential-field {
-    align-items: flex-start;
-    color: #334155;
-    font-size: 12px;
-    line-height: 1.35;
-}
-
-.credential-field .mini-state {
-    justify-content: flex-end;
-    max-width: 72%;
-    height: auto;
-    min-height: 24px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    line-height: 1.25;
-    text-align: right;
-    white-space: normal;
 }
 
 .account-form {
@@ -4832,7 +4829,6 @@ dt,
 .snapshot-row small,
 .empty-row,
 .health-issue small,
-.credential-card small,
 .post-query-meta,
 .agenda-post small,
 .system-log-meta small,
@@ -4872,7 +4868,6 @@ dt,
 .report-provider-panel,
 .audience-panel,
 .agenda-post,
-.credential-card,
 .validation-panel {
     background: var(--dw-surface-subtle);
     border: 1px solid var(--dw-border);
@@ -5448,39 +5443,23 @@ dd {
     min-width: 0;
 }
 
-.credential-diagnostics,
 .system-disclosure,
-.system-action-menu {
+.action-menu {
     color: var(--dw-ink);
     background: var(--dw-surface-base);
     border: 1px solid var(--dw-border);
     border-radius: var(--dw-radius);
 }
 
-.credential-diagnostics {
-    margin-top: 12px;
-}
-
-.credential-diagnostics > summary,
 .system-disclosure > summary,
-.system-action-menu > summary {
+.action-menu > summary {
     cursor: pointer;
     font-weight: 800;
     list-style-position: inside;
 }
 
-.credential-diagnostics > summary {
-    padding: 12px 14px;
-}
-
-.credential-diagnostics[open] > summary,
 .system-disclosure[open] > summary {
     border-bottom: 1px solid var(--dw-border);
-}
-
-.credential-diagnostics .credential-grid {
-    padding: 14px;
-    margin: 0;
 }
 
 .system-disclosure {
@@ -5507,12 +5486,12 @@ dd {
     box-shadow: none;
 }
 
-.system-action-menu {
+.action-menu {
     position: relative;
     background: var(--dw-surface-subtle);
 }
 
-.system-action-menu > summary {
+.action-menu > summary {
     min-height: 34px;
     padding: 7px 12px;
     font-size: 12px;
@@ -5520,13 +5499,17 @@ dd {
     text-transform: uppercase;
 }
 
-.system-action-menu-content {
+.action-menu-content {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     max-width: 640px;
     padding: 10px;
     border-top: 1px solid var(--dw-border);
+}
+
+.provider-setup-menu .action-menu-content {
+    justify-content: flex-end;
 }
 
 .confirmation-dialog:focus {
@@ -5750,10 +5733,6 @@ dd {
     }
 
     .tiktok-connection-form {
-        grid-template-columns: 1fr;
-    }
-
-    .credential-grid {
         grid-template-columns: 1fr;
     }
 

@@ -32,6 +32,7 @@ use crate::mastodon::{
     connect_mastodon_account as connect_mastodon_account_provider,
     register_mastodon_app as register_mastodon_app_provider,
 };
+use crate::media_staging::enroll_media_staging_device;
 use crate::media_tools::{self, MediaToolSource};
 use crate::secrets::{
     save_service_credential as save_service_credential_secret,
@@ -52,6 +53,9 @@ fn build_system_health_summary(
 ) -> SystemHealthSummary {
     let mut issues = Vec::new();
     let missing_credentials = missing_active_credentials(credential_statuses);
+    let instagram_local_media_missing = credential_statuses
+        .iter()
+        .any(|status| status.service == "media_staging" && status.active && !status.configured);
 
     if counts.unauthorized_accounts > 0 {
         issues.push(SystemHealthIssue {
@@ -102,6 +106,14 @@ fn build_system_health_summary(
             severity: "error".to_string(),
             title: "Missing active service credentials".to_string(),
             detail: missing_credentials.join(", "),
+        });
+    }
+
+    if instagram_local_media_missing {
+        issues.push(SystemHealthIssue {
+            severity: "warning".to_string(),
+            title: "Instagram local media setup needed".to_string(),
+            detail: "Publishing an image stored on this Mac to Instagram needs a one-time Dust Wave pairing code. Other features still work.".to_string(),
         });
     }
 
@@ -179,7 +191,7 @@ fn media_tool_status(name: &str, env_var: &str, fallback_command: &str) -> Syste
 fn missing_active_credentials(statuses: &[ServiceCredentialStatus]) -> Vec<String> {
     statuses
         .iter()
-        .filter(|status| status.active && !status.configured)
+        .filter(|status| status.service != "media_staging" && status.active && !status.configured)
         .flat_map(|status| {
             status
                 .fields
@@ -854,6 +866,31 @@ pub fn save_service_credential(
 }
 
 #[tauri::command]
+pub fn enroll_media_staging(
+    database: State<'_, Database>,
+    base_url: String,
+    enrollment_code: String,
+) -> Result<Vec<ServiceCredentialStatus>, String> {
+    let base_url = base_url.trim().trim_end_matches('/').to_string();
+    let token = enroll_media_staging_device(&base_url, &enrollment_code)
+        .map_err(|error| error.to_string())?;
+    let service_ref = save_service_credential_secret("media_staging", "client_secret", &token)
+        .map_err(|error| error.to_string())?;
+
+    database
+        .save_service(&ServiceForm {
+            name: "media_staging".to_string(),
+            configuration_secret_ref: service_ref,
+            configuration: Some(serde_json::json!({ "base_url": base_url })),
+            active: true,
+        })
+        .map_err(|error| error.to_string())?;
+    let services = database.services().map_err(|error| error.to_string())?;
+
+    Ok(build_service_credential_statuses(&services))
+}
+
+#[tauri::command]
 pub fn start_twitter_oauth(
     request: TwitterOAuthStartForm,
 ) -> Result<TwitterOAuthStartSummary, String> {
@@ -1477,6 +1514,47 @@ mod tests {
 
         assert_eq!(summary.status, "ok");
         assert!(summary.issues.is_empty());
+    }
+
+    #[test]
+    fn explains_instagram_local_media_as_contextual_non_blocking_setup() {
+        let statuses = vec![ServiceCredentialStatus {
+            service: "media_staging".to_string(),
+            label: "Instagram Local Media".to_string(),
+            group: "media".to_string(),
+            active: true,
+            configured: false,
+            fields: vec![ServiceCredentialFieldStatus {
+                field: "client_secret".to_string(),
+                label: "Access Token".to_string(),
+                configured: false,
+                env_vars: vec!["DUSTWAVE_MEDIA_STAGING_TOKEN".to_string()],
+            }],
+        }];
+        let summary = build_system_health_summary(
+            SystemHealthCounts {
+                unauthorized_accounts: 0,
+                failed_posts: 0,
+                pending_jobs: 0,
+                processing_jobs: 0,
+                failed_jobs: 0,
+                rate_limits: 0,
+            },
+            &statuses,
+            "2026-08-22T15:00:00Z".to_string(),
+        );
+
+        assert_eq!(summary.status, "warning");
+        assert_eq!(summary.issues.len(), 1);
+        assert_eq!(
+            summary.issues[0].title,
+            "Instagram local media setup needed"
+        );
+        assert!(
+            summary.issues[0]
+                .detail
+                .contains("one-time Dust Wave pairing code")
+        );
     }
 
     #[test]

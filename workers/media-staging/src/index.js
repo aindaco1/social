@@ -1,6 +1,11 @@
 const DEFAULT_MAX_OBJECT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
 const MAX_TTL_SECONDS = 7 * 24 * 60 * 60;
+const DEFAULT_ENROLLMENT_TTL_SECONDS = 15 * 60;
+const MAX_ENROLLMENT_TTL_SECONDS = 60 * 60;
+const AUTH_PREFIX = "auth/";
+const ENROLLMENT_PREFIX = `${AUTH_PREFIX}enrollments/`;
+const DEVICE_PREFIX = `${AUTH_PREFIX}devices/`;
 const ALLOWED_MIME_TYPES = new Set([
     "image/jpeg",
     "image/png",
@@ -24,6 +29,15 @@ export default {
 
             if (url.pathname === "/api/media/stage" && request.method === "POST") {
                 return await stageMedia(request, env);
+            }
+
+            if (url.pathname === "/api/enrollments" && request.method === "POST") {
+                await requireOperatorToken(request, env);
+                return jsonResponse(await createEnrollment(request, env), 201);
+            }
+
+            if (url.pathname === "/api/enroll" && request.method === "POST") {
+                return jsonResponse(await enrollDevice(request, env), 201);
             }
 
             const mediaMatch = url.pathname.match(/^\/media\/([A-Za-z0-9._/-]+)$/);
@@ -76,7 +90,7 @@ export default {
 };
 
 async function stageMedia(request, env) {
-    requireEnv(env, ["MEDIA_BUCKET", "MEDIA_STAGING_TOKEN", "PUBLIC_MEDIA_BASE_URL"]);
+    requireEnv(env, ["MEDIA_BUCKET", "PUBLIC_MEDIA_BASE_URL"]);
     await requireToken(request, env);
 
     const contentType = trimContentType(request.headers.get("content-type") || "");
@@ -143,6 +157,10 @@ async function stageMedia(request, env) {
 async function serveMedia(request, env, key) {
     requireEnv(env, ["MEDIA_BUCKET"]);
 
+    if (key.startsWith(AUTH_PREFIX)) {
+        return new Response("Not found", { status: 404 });
+    }
+
     const object = await env.MEDIA_BUCKET.get(key, {
         onlyIf: request.headers,
         range: request.headers,
@@ -193,21 +211,187 @@ async function cleanupExpired(env) {
 }
 
 async function requireToken(request, env) {
-    const expected = String(env.MEDIA_STAGING_TOKEN || "").trim();
-
-    if (!expected) {
-        throw new StagingError("media_staging_token_missing", 500);
-    }
-
     const token = bearerToken(request);
 
     if (!token) {
         throw new StagingError("missing_bearer_token", 401);
     }
 
-    if (await sha256Hex(token) !== await sha256Hex(expected)) {
+    if (await operatorTokenMatches(token, env)) {
+        return;
+    }
+
+    requireEnv(env, ["MEDIA_BUCKET"]);
+    const device = await env.MEDIA_BUCKET.head(await deviceKey(token));
+
+    if (!device) {
+        if (operatorTokens(env).length === 0) {
+            throw new StagingError("media_staging_token_missing", 500);
+        }
+
         throw new StagingError("media_staging_not_authorized", 401);
     }
+}
+
+async function requireOperatorToken(request, env) {
+    const token = bearerToken(request);
+
+    if (!token) {
+        throw new StagingError("missing_bearer_token", 401);
+    }
+
+    if (operatorTokens(env).length === 0) {
+        throw new StagingError("media_staging_token_missing", 500);
+    }
+
+    if (!await operatorTokenMatches(token, env)) {
+        throw new StagingError("media_staging_not_authorized", 401);
+    }
+}
+
+function operatorTokens(env) {
+    return [env.MEDIA_STAGING_TOKEN, env.MEDIA_STAGING_TOKEN_NEXT]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+}
+
+async function operatorTokenMatches(token, env) {
+    const actual = await sha256Hex(token);
+
+    for (const expected of operatorTokens(env)) {
+        if (constantTimeEqual(actual, await sha256Hex(expected))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+async function createEnrollment(request, env) {
+    requireEnv(env, ["MEDIA_BUCKET"]);
+    const body = await optionalJsonBody(request);
+    const label = cleanMetadata(body.label) || "Dust Wave Social device";
+    const requestedTtl = positiveInteger(body.ttl_seconds, DEFAULT_ENROLLMENT_TTL_SECONDS);
+    const ttlSeconds = Math.max(60, Math.min(requestedTtl, MAX_ENROLLMENT_TTL_SECONDS));
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+    const enrollmentCode = randomToken("dwse_");
+
+    await env.MEDIA_BUCKET.put(await enrollmentKey(enrollmentCode), new Uint8Array(), {
+        customMetadata: {
+            label,
+            createdAt: now.toISOString(),
+            expiresAt: expiresAt.toISOString(),
+        },
+    });
+
+    return {
+        ok: true,
+        enrollment_code: enrollmentCode,
+        expires_at: expiresAt.toISOString(),
+    };
+}
+
+async function enrollDevice(request, env) {
+    requireEnv(env, ["MEDIA_BUCKET"]);
+    const body = await requiredJsonBody(request);
+    const enrollmentCode = String(body.enrollment_code || "").trim();
+
+    if (!/^dwse_[A-Za-z0-9_-]{40,}$/.test(enrollmentCode)) {
+        throw new StagingError("invalid_enrollment_code", 400);
+    }
+
+    const key = await enrollmentKey(enrollmentCode);
+    const enrollment = await env.MEDIA_BUCKET.head(key);
+
+    if (!enrollment) {
+        throw new StagingError("enrollment_code_not_found", 404);
+    }
+
+    const expiresAt = enrollment.customMetadata?.expiresAt;
+
+    if (!expiresAt || Date.parse(expiresAt) <= Date.now()) {
+        await env.MEDIA_BUCKET.delete(key);
+        throw new StagingError("enrollment_code_expired", 410);
+    }
+
+    await env.MEDIA_BUCKET.delete(key);
+    const deviceToken = randomToken("dwms_");
+    const now = new Date();
+
+    await env.MEDIA_BUCKET.put(await deviceKey(deviceToken), new Uint8Array(), {
+        customMetadata: {
+            label: cleanMetadata(enrollment.customMetadata?.label) || "Dust Wave Social device",
+            createdAt: now.toISOString(),
+        },
+    });
+
+    return {
+        ok: true,
+        token: deviceToken,
+        enrolled_at: now.toISOString(),
+    };
+}
+
+async function optionalJsonBody(request) {
+    if (!request.headers.get("content-type")) {
+        return {};
+    }
+
+    return requiredJsonBody(request);
+}
+
+async function requiredJsonBody(request) {
+    const declaredLength = Number(request.headers.get("content-length") || 0);
+
+    if (declaredLength > 4096) {
+        throw new StagingError("request_body_too_large", 413);
+    }
+
+    const text = await request.text();
+
+    if (text.length > 4096) {
+        throw new StagingError("request_body_too_large", 413);
+    }
+
+    try {
+        return JSON.parse(text || "{}");
+    } catch {
+        throw new StagingError("invalid_json", 400);
+    }
+}
+
+function randomToken(prefix) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const encoded = btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replace(/=+$/, "");
+
+    return `${prefix}${encoded}`;
+}
+
+async function enrollmentKey(code) {
+    return `${ENROLLMENT_PREFIX}${await sha256Hex(code)}`;
+}
+
+async function deviceKey(token) {
+    return `${DEVICE_PREFIX}${await sha256Hex(token)}`;
+}
+
+function constantTimeEqual(left, right) {
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    let difference = 0;
+
+    for (let index = 0; index < left.length; index += 1) {
+        difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+    }
+
+    return difference === 0;
 }
 
 function bearerToken(request) {

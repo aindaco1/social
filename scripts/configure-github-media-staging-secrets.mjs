@@ -26,6 +26,7 @@ const secretNames = [
     'CLOUDFLARE_API_TOKEN',
     'CLOUDFLARE_ACCOUNT_ID',
     'MEDIA_STAGING_TOKEN',
+    'MEDIA_STAGING_TOKEN_NEXT',
 ];
 
 const variableNames = [

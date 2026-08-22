@@ -4836,7 +4836,7 @@ impl Database {
                             .filter(|value| !value.is_empty())
                             .ok_or_else(|| {
                                 DbError::Validation(
-                                    "Instagram publishing local media requires the Media Staging service base URL"
+                                    "Instagram local-image publishing needs the Instagram Local Media service URL. Open Connections > Provider setup > Instagram Local Media."
                                         .to_string(),
                                 )
                             })?;

@@ -22,6 +22,7 @@ struct ServiceCredentialFieldDefinition {
 #[derive(Debug)]
 pub enum SecretError {
     Keychain(String),
+    KeychainUnavailable,
     UnknownField {
         service: String,
         field: String,
@@ -41,6 +42,10 @@ impl Display for SecretError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Keychain(error) => write!(formatter, "keychain error: {error}"),
+            Self::KeychainUnavailable => write!(
+                formatter,
+                "Keychain access is disabled for this unsigned local debug build; use npm run desktop:dev with a Developer ID identity or provide credentials through the documented environment variables"
+            ),
             Self::UnknownField { service, field } => {
                 write!(formatter, "unknown credential field {service}.{field}")
             }
@@ -66,6 +71,7 @@ impl Error for SecretError {}
 const CLIENT_ID: &str = "client_id";
 const CLIENT_SECRET: &str = "client_secret";
 const KEYCHAIN_SERVICE: &str = "com.dustwave.social";
+const KEYCHAIN_MODE_ENV: &str = "DUSTWAVE_KEYCHAIN_MODE";
 
 const SERVICE_CREDENTIALS: &[ServiceCredentialDefinition] = &[
     ServiceCredentialDefinition {
@@ -139,11 +145,11 @@ const SERVICE_CREDENTIALS: &[ServiceCredentialDefinition] = &[
     },
     ServiceCredentialDefinition {
         service: "media_staging",
-        label: "Media Staging",
+        label: "Instagram Local Media",
         group: "media",
         fields: &[ServiceCredentialFieldDefinition {
             field: CLIENT_SECRET,
-            label: "Staging Token",
+            label: "Access Token",
             env_vars: &["DUSTWAVE_MEDIA_STAGING_TOKEN", "MEDIA_STAGING_TOKEN"],
         }],
     },
@@ -216,6 +222,7 @@ pub fn save_service_credential(
 }
 
 pub fn save_secret_value(service: &str, field: &str, value: &str) -> Result<String, SecretError> {
+    ensure_keychain_access()?;
     let entry = keychain_entry(service, field)?;
 
     entry
@@ -239,6 +246,7 @@ pub fn save_account_secret(
     value: &str,
 ) -> Result<String, SecretError> {
     let subject = format!("accounts/{provider}/{provider_id}");
+    ensure_keychain_access()?;
     let entry = keychain_entry(&subject, field)?;
 
     entry
@@ -318,6 +326,10 @@ fn resolve_stored_credential(
 }
 
 fn resolve_keychain(service: &str, field: &str) -> Result<Option<String>, SecretError> {
+    if !keychain_access_enabled() {
+        return Ok(None);
+    }
+
     let entry = keychain_entry(service, field)?;
 
     match entry.get_password() {
@@ -325,6 +337,27 @@ fn resolve_keychain(service: &str, field: &str) -> Result<Option<String>, Secret
         Ok(_) => Ok(None),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => Err(SecretError::Keychain(error.to_string())),
+    }
+}
+
+fn ensure_keychain_access() -> Result<(), SecretError> {
+    keychain_access_enabled()
+        .then_some(())
+        .ok_or(SecretError::KeychainUnavailable)
+}
+
+fn keychain_access_enabled() -> bool {
+    keychain_access_enabled_with(
+        env::var(KEYCHAIN_MODE_ENV).ok().as_deref(),
+        cfg!(debug_assertions),
+    )
+}
+
+fn keychain_access_enabled_with(mode: Option<&str>, debug_build: bool) -> bool {
+    match mode.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("keychain" | "enabled" | "on") => true,
+        Some("environment" | "disabled" | "off") => false,
+        _ => !debug_build,
     }
 }
 
@@ -388,5 +421,13 @@ mod tests {
             .expect("klipy status should exist");
         assert!(!klipy.active);
         assert!(!klipy.configured);
+    }
+
+    #[test]
+    fn unsigned_debug_builds_default_to_environment_only_credentials() {
+        assert!(!keychain_access_enabled_with(None, true));
+        assert!(keychain_access_enabled_with(None, false));
+        assert!(keychain_access_enabled_with(Some("keychain"), true));
+        assert!(!keychain_access_enabled_with(Some("environment"), false));
     }
 }

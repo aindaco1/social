@@ -89,6 +89,7 @@ pub fn run() {
             commands::services,
             commands::service_credential_statuses,
             commands::save_service_credential,
+            commands::enroll_media_staging,
             commands::start_twitter_oauth,
             commands::connect_twitter_account,
             commands::start_facebook_oauth,
