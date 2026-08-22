@@ -6,9 +6,9 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-Version 0.1.7 is the current release candidate for Apple Silicon macOS; version 0.1.6 remains the latest independently verified public release until the protected release workflow finishes. Releases are distributed as signed, notarized, and stapled DMGs with signed updater assets. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
+Version 0.1.7 is the current published release for Apple Silicon macOS. It is distributed as a signed, notarized, and stapled DMG with signed updater assets. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
 
-Version 0.1.7 adds contextual provider diagnostics and configuration, one-time Instagram Local Media pairing, quieter system maintenance feedback, and stable Developer ID signing for local builds so macOS can reuse the production Keychain access identity. The protected v0.1.6 workflow proved the automatic updater process hop from v0.1.5; v0.1.7 must repeat that acceptance before publication is considered complete. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence.
+Version 0.1.7 adds contextual provider diagnostics and configuration, one-time Instagram Local Media pairing, quieter system maintenance feedback, and stable Developer ID signing for local builds so macOS can reuse the production Keychain access identity. Its protected workflow installed the public signed update over a staged public v0.1.6 app and verified that the replacement relaunched as v0.1.7 in a new process. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence.
 
 Run the current readiness audit instead of copying status counts into another document:
 
