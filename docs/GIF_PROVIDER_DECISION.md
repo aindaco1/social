@@ -35,7 +35,7 @@ Conclusion:
 ## Implementation Rules
 
 - Keep the product source as `gifs`; choose Klipy in the backend provider adapter so the UI and Mixpost parity surface do not depend on provider-specific naming.
-- Store the Klipy API key in the OS keychain through the Services screen or via `DUSTWAVE_KLIPY_CLIENT_ID`, `DUSTWAVE_KLIPY_API_KEY`, `KLIPY_CLIENT_ID`, or `KLIPY_API_KEY`.
+- Store the Klipy API key in the OS keychain through Connections > Provider setup or via `DUSTWAVE_KLIPY_CLIENT_ID`, `DUSTWAVE_KLIPY_API_KEY`, `KLIPY_CLIENT_ID`, or `KLIPY_API_KEY`.
 - Do not pass ad parameters, advertising IDs, device fingerprints, or tracking identifiers for MVP.
 - Store only provider metadata needed to re-fetch or publish selected Klipy content, such as provider, id, slug, source URL, media format, dimensions, attribution fields, and selected rendition URL. Do not store the binary Klipy GIF as app media.
 - Do not allow the Media Library `Download` action to persist Klipy results. Klipy-selected media should attach to posts as external provider references, not reusable uploaded media records.
@@ -57,7 +57,7 @@ The common pattern is search/proxy/select/post by URL or ID, with optional local
 
 ## Current Status
 
-- Implemented: Klipy credential definition, Services UI entry, GIF search adapter, Klipy response mapper, tests for Klipy result mapping, and a guard that blocks permanent Klipy GIF downloads into the reusable media library.
+- Implemented: Klipy credential definition, Provider setup UI entry, GIF search adapter, Klipy response mapper, tests for Klipy result mapping, and a guard that blocks permanent Klipy GIF downloads into the reusable media library.
 - Implemented: selected Klipy results attach to posts as external provider references, appear in composer/post previews, validate through the post content schema, and are fetched only as temporary publish-time upload assets that are deleted after the upload attempt.
 - Implemented: local/manual GIF import through the existing app media library, file picker/drop target, MIME detection, local storage, and media filtering.
 - Pending: production Klipy account, attribution assets/guidelines, content-filter settings, live API acceptance, and written approval only if Dust Wave wants permanent Klipy media-library imports.

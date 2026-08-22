@@ -6,9 +6,9 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-Version 0.1.3 is published for Apple Silicon macOS as a signed, notarized, and stapled DMG. It fixes the Vue/Tauri integration bug that prevents versions 0.1.0 through 0.1.2 from completing an in-app install. Those affected versions require one manual 0.1.3 DMG installation without uninstalling the existing app first.
+Version 0.1.5 is the current published release for Apple Silicon macOS. It is distributed as a signed, notarized, and stapled DMG with signed updater assets. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
 
-The protected release workflow installed the public signed 0.1.3 update into a staged 0.1.2 app and verified the resulting bundle version. Version 0.1.3 also adds UI-level coverage for the Vue/Tauri resource boundary; hands-on installation of the hotfix and the next in-app UI update hop remain operator acceptance items. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install also still require operator evidence.
+The protected release workflow verified the one-time 0.1.4-to-0.1.5 updater bridge by replacing the signed app bundle and launching the installed 0.1.5 app in a new process. Version 0.1.5 moves future update installation and restart into one Rust-side operation; the next signed release must prove the automatic process hop. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence.
 
 Run the current readiness audit instead of copying status counts into another document:
 
@@ -30,7 +30,7 @@ The launch source of truth is [docs/MVP_LAUNCH_PLAN.md](docs/MVP_LAUNCH_PLAN.md)
 - Back up and restore app data, inspect redacted logs, receive desktop notifications, and install signed updates.
 - Use opt-in, on-device media tools for image upscaling, quality preflight, crop suggestions, local media search, and editable alt-text drafts.
 
-See [docs/FEATURES.md](docs/FEATURES.md) for the provider matrix, current limitations, and deferred work.
+See [docs/FEATURES.md](docs/FEATURES.md) for the provider matrix, current limitations, and deferred work. The canonical operator journeys and their regression IDs are in [docs/USER_FLOWS.md](docs/USER_FLOWS.md).
 
 ## Development
 
@@ -74,6 +74,7 @@ composer test
 ## Documentation
 
 - [Features and limits](docs/FEATURES.md)
+- [User flows and UX regression matrix](docs/USER_FLOWS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [MVP launch and release operations](docs/MVP_LAUNCH_PLAN.md)
 - [Local AI media](docs/LOCAL_AI.md)

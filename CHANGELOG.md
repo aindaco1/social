@@ -4,6 +4,13 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.6 - 2026-08-22
+
+- Reorganized the complete Social workspace into nine grouped destinations, consolidating account and provider setup under Connections and separating composing from the Post library without removing capabilities.
+- Reworked Add Account, empty, setup, and System states to eliminate cramped or ambiguous controls and make the next action explicit.
+- Added contextual editing from post details into the composer, origin-aware return paths, on-demand schedule and retry-time editing, and a shared accessible inline editor for schedules and labels.
+- Added shared accessible tabs and confirmation dialogs, a canonical 46-flow UX inventory, and one-to-one regression coverage for every documented operator journey.
+
 ## 0.1.5 - 2026-08-21
 
 - Fixed signed updates replacing the app bundle but leaving the old process indefinitely on “Installing update.”

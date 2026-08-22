@@ -21,6 +21,7 @@ const requiredDocuments = [
     'docs/LOCAL_AI.md',
     'docs/MVP_LAUNCH_PLAN.md',
     'docs/SUPPORT_RUNBOOK.md',
+    'docs/USER_FLOWS.md',
     'src-tauri/binaries/README.md',
     'workers/media-staging/README.md',
     'workers/tiktok-broker/README.md',

@@ -46,9 +46,13 @@ defineProps({
         type: Array,
         default: () => [],
     },
+    canEdit: {
+        type: Boolean,
+        default: false,
+    },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'edit']);
 </script>
 
 <template>
@@ -65,9 +69,19 @@ const emit = defineEmits(['close']);
                     <h3 id="post-detail-title">Post details</h3>
                     <small>{{ summary.uuid }}</small>
                 </div>
-                <button type="button" class="modal-close-button" aria-label="Close post details" @click="emit('close')">
-                    &times;
-                </button>
+                <div class="post-detail-header-actions">
+                    <button
+                        v-if="detail && canEdit"
+                        type="button"
+                        class="inline-button"
+                        @click="emit('edit')"
+                    >
+                        Edit in composer
+                    </button>
+                    <button type="button" class="modal-close-button" aria-label="Close post details" @click="emit('close')">
+                        &times;
+                    </button>
+                </div>
             </header>
             <div v-if="loading" class="form-note">Loading post detail</div>
             <div v-if="error" class="form-error">{{ error }}</div>

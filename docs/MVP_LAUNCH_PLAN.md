@@ -1,6 +1,6 @@
 # Dust Wave Social MVP Launch Plan
 
-Updated: 2026-08-21
+Updated: 2026-08-22
 
 Audience: Dust Wave operators and release maintainers preparing the Apple Silicon macOS release.
 
@@ -46,7 +46,7 @@ The first 0.1.1 candidate passed signing, notarization, artifact checks, and upd
 
 Hands-on testing then found that versions 0.1.0 through 0.1.2 stored Tauri's updater resource in a deep Vue `ref`. Vue proxied the resource, so Tauri could not read its private resource ID and installation failed before download. Version 0.1.3 changes that state to `shallowRef` and adds a regression test against the real Tauri `Update` class. Because affected clients cannot install the fix in-app, operators must install the 0.1.3 or newer DMG over the existing app once.
 
-The first hands-on 0.1.3 to 0.1.4 hop downloaded and installed the signed release, but the old process remained on “Installing update” after its bundle had been replaced. Version 0.1.5 moves download, verification, installation, and restart into one Rust-side operation so a WebView response cannot strand future handoffs. Because 0.1.4 cannot execute code that only exists in the replacement bundle, the 0.1.4 to 0.1.5 bridge still requires one manual quit/reopen after installation. Its protected smoke separately proves signed bundle replacement and launch of the installed 0.1.5 app under a new PID; releases after 0.1.5 must prove the automatic process hop. Hands-on app-data and Services acceptance remain operator checks.
+The first hands-on 0.1.3 to 0.1.4 hop downloaded and installed the signed release, but the old process remained on “Installing update” after its bundle had been replaced. Version 0.1.5 moves download, verification, installation, and restart into one Rust-side operation so a WebView response cannot strand future handoffs. Because 0.1.4 cannot execute code that only exists in the replacement bundle, the 0.1.4 to 0.1.5 bridge still requires one manual quit/reopen after installation. Its protected smoke separately proves signed bundle replacement and launch of the installed 0.1.5 app under a new PID; releases after 0.1.5 must prove the automatic process hop. Hands-on app-data and Connections > Provider setup acceptance remain operator checks.
 
 The generated section below describes local checkout artifacts, which may differ from the published production files above.
 
@@ -56,17 +56,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.5 exists; the checkout may include post-release changes
+Source state: generated from local worktree with uncommitted changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.5_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.6_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `3421173b-517c-4d7e-8c5d-b424c72ae9b4`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.5`
+- Updater version: `0.1.6`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 
@@ -83,7 +83,7 @@ Manual acceptance still required:
 - TikTok developer credential TIKTOK_CLIENT_KEY - from TikTok Developer Portal
 - TikTok developer credential TIKTOK_CLIENT_SECRET - from TikTok Developer Portal
 - Current release candidate notarization and stapling - submit the current DMG to Apple, wait for acceptance, staple it, and rerun strict artifact verification
-- Media Staging token saved in desktop Services and Instagram local-media acceptance - requires launch Mac Keychain entry and live Instagram publish validation
+- Media Staging token saved in Connections > Provider setup and Instagram local-media acceptance - requires launch Mac Keychain entry and live Instagram publish validation
 - Local AI packaged-app offline model probe and reviewed output acceptance - requires signed/stapled app test with network disabled and operator review of generated derivatives
 - X/Twitter live credential and publish acceptance - requires provider portal, live account, or separate target Mac
 - Facebook/Meta live credential and Page acceptance - requires provider portal, live account, or separate target Mac
@@ -182,7 +182,7 @@ Intel and universal macOS builds are outside MVP scope.
 
 ## 3. Configure services
 
-In Services, use `Copy All Setup` or `Copy Missing`. The packet must contain callback URLs, scopes, and setup instructions but no existing secret values.
+In Connections > Provider setup, use `Copy All Setup` or `Copy Missing`. The packet must contain callback URLs, scopes, and setup instructions but no existing secret values.
 
 Store credentials only in provider portals, Cloudflare/GitHub secret stores, or the app's Keychain-backed forms.
 
@@ -220,21 +220,21 @@ Each provider has one `Save [Provider] Settings` action. It saves every newly en
 
 ### Mastodon
 
-Mastodon is configured per server from Accounts. Use the server host, not a profile URL, and confirm dynamic app registration is permitted on each target server.
+Mastodon is configured per server from Connections > Connected accounts. Use the server host, not a profile URL, and confirm dynamic app registration is permitted on each target server.
 
 Provider setup is complete only when the required service cards are active, `Copy Missing` reports no unexpected gaps, logs remain secret-free, and the setup packet still contains no credentials.
 
 ## 4. Onboard accounts
 
-Use `Copy Intake CSV` in Accounts and record one row per managed account. Supported provider values are `twitter`, `facebook_page`, `instagram`, `mastodon`, and `tiktok`.
+Use `Copy Intake CSV` in Connections > Connected accounts and record one row per managed account. Supported provider values are `twitter`, `facebook_page`, `instagram`, `mastodon`, and `tiktok`.
 
 For every account:
 
-1. Connect through the provider-specific Accounts flow.
+1. Connect through the provider-specific Add Account flow in Connections > Connected accounts.
 2. Confirm the account is authorized.
 3. Refresh account metadata where supported.
 4. Queue/import history when required.
-5. Confirm Reports receives the expected audience, post, insight, or video metrics.
+5. Confirm Analytics receives the expected audience, post, insight, or video metrics.
 6. Keep unsupported/manual workflows in the notes column rather than representing them as connected providers.
 
 TikTok onboarding begins at the broker OAuth start URL. Paste only the broker-issued opaque connection credential into Dust Wave Social; never paste TikTok access/refresh tokens or the client secret.
@@ -299,7 +299,7 @@ Operator acceptance remains:
 2. Confirm the installed 0.1.4 app loads that data before starting the update.
 3. From 0.1.4, use the top-right Update action or the detailed controls in System to download and install 0.1.5.
 4. When 0.1.4 remains on “Installing update,” quit it normally and reopen Dust Wave Social once; confirm the app launches as 0.1.5.
-5. Confirm representative app data, Keychain-backed service readiness, and saved Services configuration survived.
+5. Confirm representative app data, Keychain-backed service readiness, and saved Provider setup configuration survived.
 6. Publish a later signed test release, update from 0.1.5, and confirm automatic exit/relaunch before closing updater acceptance.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.

@@ -15,6 +15,26 @@ const updateStatusButtonSource = await readFile(
     path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'UpdateStatusButton.vue'),
     'utf8',
 );
+const confirmDialogSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'ConfirmDialog.vue'),
+    'utf8',
+);
+const contextualEditorSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'ContextualEditor.vue'),
+    'utf8',
+);
+const postDetailModalSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'PostDetailModal.vue'),
+    'utf8',
+);
+const workspaceTabsSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'WorkspaceTabs.vue'),
+    'utf8',
+);
+const desktopStylesSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'styles.css'),
+    'utf8',
+);
 
 function sourceBetween(start, end) {
     const startIndex = appSource.indexOf(start);
@@ -51,6 +71,76 @@ test('TikTok readiness and onboarding require broker-backed analytics inputs', (
     assert.ok(appSource.includes('/api/tiktok/oauth/start'));
 });
 
+test('add account modal chooses one provider before showing its readable form', () => {
+    assert.ok(appSource.includes('const accountProviderChoices = ['));
+    assert.ok(appSource.includes('v-if="!activeAccountProvider" class="account-provider-choice-list"'));
+    assert.ok(appSource.includes("v-if=\"activeAccountProvider === 'twitter'\""));
+    assert.ok(appSource.includes("v-if=\"activeAccountProvider === 'facebook'\""));
+    assert.ok(appSource.includes("v-if=\"activeAccountProvider === 'mastodon'\""));
+    assert.ok(appSource.includes("v-if=\"activeAccountProvider === 'tiktok'\""));
+    assert.match(
+        desktopStylesSource,
+        /\.account-provider-choice-list\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    assert.match(
+        desktopStylesSource,
+        /\.account-provider-grid\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    );
+    assert.match(
+        desktopStylesSource,
+        /\.twitter-oauth-form\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    assert.match(
+        desktopStylesSource,
+        /\.facebook-oauth-form\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    assert.match(
+        desktopStylesSource,
+        /\.mastodon-app-form\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    assert.match(
+        desktopStylesSource,
+        /\.tiktok-connection-form\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    assert.ok(desktopStylesSource.includes('.tiktok-connection-form input,'));
+    assert.match(
+        desktopStylesSource,
+        /@media \(max-width: 900px\)[\s\S]*\.account-provider-choice-list,[\s\S]*\.tiktok-connection-form\s*{\s*grid-template-columns:\s*1fr;/,
+    );
+});
+
+test('shared workspace tabs and confirmation dialog preserve accessible interaction semantics', () => {
+    assert.ok(appSource.includes("import WorkspaceTabs from '@desktop/components/WorkspaceTabs.vue'"));
+    assert.ok(appSource.includes("import ConfirmDialog from '@desktop/components/ConfirmDialog.vue'"));
+    assert.ok(workspaceTabsSource.includes('role="tablist"'));
+    assert.ok(workspaceTabsSource.includes('role="tab"'));
+    assert.ok(workspaceTabsSource.includes(':aria-selected="modelValue === tab.id"'));
+    assert.ok(confirmDialogSource.includes('role="dialog"'));
+    assert.ok(confirmDialogSource.includes('aria-modal="true"'));
+    assert.ok(confirmDialogSource.includes('@keydown.esc.prevent="emit(\'cancel\')"'));
+    assert.ok(appSource.includes('const requestConfirmation = ({'));
+    assert.equal(appSource.includes('window.confirm'), false);
+});
+
+test('contextual edits reuse one accessible editor and preserve the surrounding workflow', () => {
+    assert.ok(appSource.includes("import ContextualEditor from '@desktop/components/ContextualEditor.vue'"));
+    assert.equal((appSource.match(/<ContextualEditor/g) || []).length, 2);
+    assert.ok(contextualEditorSource.includes('@keydown.esc.stop.prevent="cancel"'));
+    assert.ok(contextualEditorSource.includes('[data-contextual-autofocus]'));
+    assert.ok(contextualEditorSource.includes('returnFocusTarget = document.activeElement'));
+    assert.ok(contextualEditorSource.includes('returnFocusTarget.focus()'));
+    assert.ok(contextualEditorSource.includes(':aria-busy="busy"'));
+    assert.ok(appSource.includes('const openPostScheduleEditor = (post) =>'));
+    assert.ok(appSource.includes('v-if="editingSchedulePostUuid === post.uuid"'));
+    assert.ok(appSource.includes('const editSelectedPostFromDetail = async () =>'));
+    assert.ok(appSource.includes('contextualEditOrigin.value = originView'));
+    assert.ok(appSource.includes('Back to {{ contextualEditOriginLabel }}'));
+    assert.ok(postDetailModalSource.includes('Edit in composer'));
+    assert.ok(postDetailModalSource.includes("defineEmits(['close', 'edit'])"));
+    assert.match(desktopStylesSource, /\.post-schedule-editor\s*{[^}]*grid-column:\s*1 \/ -1/s);
+    assert.match(desktopStylesSource, /\.tag-edit-form \.contextual-editor-fields\s*{[^}]*grid-template-columns:/s);
+});
+
 test('Instagram is exposed as a first-class Meta account type', () => {
     assert.ok(appSource.includes("instagram: ["));
     assert.ok(appSource.includes("connectInstagramAccounts"));
@@ -72,7 +162,10 @@ test('media staging service requires an HTTPS Worker base URL', () => {
 test('every service configuration uses one explicit save with complete feedback', () => {
     const serviceDefinitionsSource = sourceBetween('const serviceDefinitions = [', 'const serviceConfigurationDefaults');
     const serviceSaveFlow = sourceBetween('const saveServiceSettings', 'const openServiceUrl');
-    const servicesMarkup = sourceBetween("<article v-if=\"activeView === 'services'\"", "<article v-if=\"activeView === 'posts'\"");
+    const servicesMarkup = sourceBetween(
+        "<article v-if=\"activeView === 'connections' && activeConnectionTab === 'services'\"",
+        "<article v-if=\"activeView === 'posts'\"",
+    );
 
     for (const serviceName of ['facebook', 'media_staging', 'twitter', 'tiktok', 'unsplash', 'klipy']) {
         assert.ok(serviceDefinitionsSource.includes(`id: '${serviceName}'`));

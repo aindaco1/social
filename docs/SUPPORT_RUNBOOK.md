@@ -18,7 +18,7 @@ Do not ask operators to browse the SQLite database directly unless engineering i
 1. Open System and use Copy Info.
 2. Open Posts and filter to Failed.
 3. Open the failed post detail and record the provider, account, error message, and scheduled time.
-4. Refresh the affected account connection from Accounts.
+4. Refresh the affected account connection from Connections > Connected accounts.
 5. Retry only after the provider connection is authorized and service credentials are active.
 
 If multiple posts failed at once, check System for provider limits or failed background work before retrying each post.
@@ -29,8 +29,8 @@ TikTok MVP support uses assisted publishing plus broker-backed analytics imports
 
 When TikTok import fails:
 
-1. In Services, confirm TikTok is Active, has a saved Client Key, and has an HTTPS Broker URL.
-2. In Accounts, confirm the TikTok account is authorized and the granted scopes include `user.info.basic`, `user.info.stats`, and `video.list`.
+1. In Connections > Provider setup, confirm TikTok is Active, has a saved Client Key, and has an HTTPS Broker URL.
+2. In Connections > Connected accounts, confirm the TikTok account is authorized and the granted scopes include `user.info.basic`, `user.info.stats`, and `video.list`.
 3. Open `https://<broker>/api/health` and confirm the broker responds.
 4. Re-run Import on the TikTok account.
 5. If the broker credential was revoked or lost, open `https://<broker>/api/tiktok/oauth/start`, authorize again, and paste the new broker connection credential into a reconnected TikTok account.
@@ -59,11 +59,11 @@ Instagram publishing of local desktop images uses the Cloudflare R2 Media Stagin
 
 When Instagram publishing fails before the provider publish call:
 
-1. In Services, confirm Media Staging is Active, has a saved Staging Token, and uses `https://dustwave-media-staging.jogo.workers.dev` as the Base URL.
+1. In Connections > Provider setup, confirm Media Staging is Active, has a saved Staging Token, and uses `https://dustwave-media-staging.jogo.workers.dev` as the Base URL.
 2. Open `https://dustwave-media-staging.jogo.workers.dev/api/health` and confirm the Worker responds.
 3. Confirm the selected media is a static image. MVP Instagram direct publishing does not support GIFs, videos, reels, stories, or carousels yet.
 4. Re-run the publish attempt.
-5. If staging still fails, rotate `MEDIA_STAGING_TOKEN` in Cloudflare and GitHub, then save the new token in Dust Wave Services.
+5. If staging still fails, rotate `MEDIA_STAGING_TOKEN` in Cloudflare and GitHub, then save the new token in Connections > Provider setup.
 6. If old staged objects accumulate, confirm the Worker was deployed with `triggers.crons` active or call the authenticated `/api/media/cleanup` endpoint with the staging token.
 
 Do not make the R2 bucket public. Public access should stay behind the Worker so object names remain high-entropy, temporary, and cleanup-aware.

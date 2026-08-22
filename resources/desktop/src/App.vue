@@ -15,7 +15,10 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef
 import { COLOR_PALLET_LIST } from '@/Constants/ColorPallet';
 import Div from '@/Extensions/TipTap/Div';
 import dustWaveSquareLogoUrl from '@desktop/assets/dust-wave-square.png';
+import ConfirmDialog from '@desktop/components/ConfirmDialog.vue';
+import ContextualEditor from '@desktop/components/ContextualEditor.vue';
 import UpdateStatusButton from '@desktop/components/UpdateStatusButton.vue';
+import WorkspaceTabs from '@desktop/components/WorkspaceTabs.vue';
 
 const WORKER_POLL_MS = 60 * 1000;
 const MAINTENANCE_POLL_MS = 60 * 60 * 1000;
@@ -120,26 +123,20 @@ const navigationViews = [
         description: 'Manage uploads, local imports, external downloads, stock images, GIFs, and media cleanup.',
     },
     {
-        id: 'accounts',
-        label: 'Accounts',
+        id: 'connections',
+        label: 'Connections',
         section: 'Connections',
-        description: 'Connect, refresh, import, queue imports for, edit, and remove social accounts.',
-    },
-    {
-        id: 'services',
-        label: 'Services',
-        section: 'Connections',
-        description: 'Configure provider services, API credentials, OAuth flows, and Mastodon app registration.',
+        description: 'Configure providers, connect social accounts, and manage imports from one place.',
     },
     {
         id: 'reports',
-        label: 'Reports',
+        label: 'Analytics',
         section: 'Analytics',
         description: 'Review audience and provider metrics for connected social accounts.',
     },
     {
         id: 'tags',
-        label: 'Tags',
+        label: 'Labels',
         section: 'Publishing',
         description: 'Create, edit, color-code, and delete labels used to organize posts.',
     },
@@ -147,13 +144,7 @@ const navigationViews = [
         id: 'settings',
         label: 'Settings',
         section: 'Workspace',
-        description: 'Configure publishing defaults, date and time display, and default accounts for new posts.',
-    },
-    {
-        id: 'profile',
-        label: 'Profile',
-        section: 'Workspace',
-        description: 'Manage the local operator name and email used for this Dust Wave Social workspace.',
+        description: 'Manage local identity, notifications, publishing defaults, and date and time display.',
     },
     {
         id: 'system',
@@ -162,8 +153,31 @@ const navigationViews = [
         description: 'Monitor account health, queued work, provider limits, maintenance, and local system logs.',
     },
 ];
-const workspaceViewIds = ['accounts', 'services', 'posts', 'media', 'tags'];
+const navigationGroups = [
+    {
+        label: 'Work',
+        viewIds: ['dashboard', 'posts', 'calendar', 'media'],
+    },
+    {
+        label: 'Manage',
+        viewIds: ['connections', 'reports', 'tags'],
+    },
+    {
+        label: 'App',
+        viewIds: ['settings', 'system'],
+    },
+].map((group) => ({
+    ...group,
+    views: group.viewIds.map((id) => navigationViews.find((view) => view.id === id)).filter(Boolean),
+}));
+const workspaceViewIds = ['connections', 'posts', 'media', 'tags'];
 const activeView = ref('dashboard');
+const activeConnectionTab = ref('accounts');
+const activePostsMode = ref('compose');
+const connectionWorkspaceTabs = [
+    { id: 'accounts', label: 'Connected accounts' },
+    { id: 'services', label: 'Provider setup' },
+];
 const providerReportDefinitions = {
     twitter: [
         { key: 'likes', label: 'Likes', description: 'The number of times where your posts were liked' },
@@ -473,6 +487,10 @@ const postQuery = ref({
     has_failed_posts: false,
     calendar_window: null,
 });
+const postWorkspaceTabs = computed(() => [
+    { id: 'compose', label: 'Compose' },
+    { id: 'library', label: `Post library · ${postQuery.value.total}` },
+]);
 const postFilter = ref({
     status: '',
     keyword: '',
@@ -572,6 +590,33 @@ const tiktokConnectionSaving = ref(false);
 const tiktokConnectionError = ref('');
 const tiktokConnection = ref(null);
 const addAccountModalOpen = ref(false);
+const activeAccountProvider = ref('');
+const accountProviderChoices = [
+    {
+        id: 'twitter',
+        label: 'X / Twitter',
+        description: 'Authorize an X account with the configured X developer app.',
+        service: 'twitter',
+    },
+    {
+        id: 'facebook',
+        label: 'Facebook / Instagram',
+        description: 'Authorize Meta, then choose Facebook Pages and Instagram accounts.',
+        service: 'facebook',
+    },
+    {
+        id: 'mastodon',
+        label: 'Mastodon',
+        description: 'Register a server app, authorize it, and connect the returned account.',
+        service: '',
+    },
+    {
+        id: 'tiktok',
+        label: 'TikTok',
+        description: 'Use the broker-assisted account connection and analytics workflow.',
+        service: 'tiktok',
+    },
+];
 const accountSaving = ref(false);
 const accountError = ref('');
 const accountOnboardingCopied = ref('');
@@ -624,6 +669,7 @@ const draftExternalMedia = ref([]);
 const draftTagIds = ref([]);
 const draftScheduledAt = ref('');
 const editingPostUuid = ref('');
+const contextualEditOrigin = ref('');
 const draftSaving = ref(false);
 const draftError = ref('');
 const tagPickerOpen = ref(false);
@@ -633,6 +679,7 @@ const validationError = ref('');
 const validationReport = ref(null);
 const postNowConfirmationOpen = ref(false);
 const postScheduleDrafts = ref({});
+const editingSchedulePostUuid = ref('');
 const scheduleSaving = ref(false);
 const scheduleError = ref('');
 const selectedPostUuids = ref([]);
@@ -684,6 +731,68 @@ const failedImportRetryRunning = ref(false);
 const failedImportRetryError = ref('');
 const failedImportRetryJobs = ref([]);
 const loadError = ref('');
+const confirmationDialog = ref({
+    open: false,
+    title: '',
+    description: '',
+    confirmLabel: 'Continue',
+    danger: false,
+});
+let confirmationResolver = null;
+
+const requestConfirmation = ({
+    title,
+    description,
+    confirmLabel = 'Continue',
+    danger = false,
+}) => new Promise((resolve) => {
+    if (confirmationResolver) {
+        confirmationResolver(false);
+    }
+
+    confirmationResolver = resolve;
+    confirmationDialog.value = {
+        open: true,
+        title,
+        description,
+        confirmLabel,
+        danger,
+    };
+});
+
+const resolveConfirmation = (accepted) => {
+    const resolve = confirmationResolver;
+    confirmationResolver = null;
+    confirmationDialog.value = {
+        ...confirmationDialog.value,
+        open: false,
+    };
+    resolve?.(accepted);
+};
+
+const writeClipboard = async (text, errorTarget) => {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch (error) {
+        if (errorTarget) {
+            errorTarget.value = String(error);
+        }
+
+        return false;
+    }
+};
+
+const openAddAccountModal = (provider = '') => {
+    activeAccountProvider.value = provider;
+    accountError.value = '';
+    addAccountModalOpen.value = true;
+};
+
+const closeAddAccountModal = () => {
+    addAccountModalOpen.value = false;
+    activeAccountProvider.value = '';
+};
 
 const postFilterTotal = computed(() => {
     return postFilter.value.accounts.length + postFilter.value.tags.length;
@@ -691,6 +800,10 @@ const postFilterTotal = computed(() => {
 
 const activeViewDefinition = computed(() => {
     return navigationViews.find((view) => view.id === activeView.value) || navigationViews[0];
+});
+
+const contextualEditOriginLabel = computed(() => {
+    return navigationViews.find((view) => view.id === contextualEditOrigin.value)?.label || 'previous view';
 });
 
 const isWorkspaceView = computed(() => {
@@ -711,7 +824,8 @@ const attentionNotices = computed(() => {
             severity: 'error',
             title: 'Account connection lost',
             detail: `${counts.unauthorized_accounts} account(s) need to be refreshed or reconnected.`,
-            view: 'accounts',
+            view: 'connections',
+            connectionTab: 'accounts',
         });
     }
 
@@ -740,6 +854,27 @@ const attentionNotices = computed(() => {
             title: 'Provider limits active',
             detail: `${counts.rate_limits} provider limit(s) are delaying work.`,
             view: 'system',
+        });
+    }
+
+    const representedIssueTitles = new Set([
+        'Unauthorized accounts',
+        'Failed posts',
+        'Failed background work',
+        'Active rate limits',
+    ]);
+
+    for (const issue of health.value?.issues || []) {
+        if (representedIssueTitles.has(issue.title)) {
+            continue;
+        }
+
+        notices.push({
+            severity: issue.severity === 'error' ? 'error' : 'warning',
+            title: issue.title,
+            detail: issue.detail,
+            view: issue.title === 'Missing active service credentials' ? 'connections' : 'system',
+            connectionTab: issue.title === 'Missing active service credentials' ? 'services' : undefined,
         });
     }
 
@@ -1460,6 +1595,10 @@ const postPageStart = computed(() => {
 });
 
 const postPageEnd = computed(() => {
+    if (!postQuery.value.total || !postQuery.value.items?.length) {
+        return 0;
+    }
+
     return Math.min(postQuery.value.total, postPageStart.value + (postQuery.value.items?.length || 0) - 1);
 });
 
@@ -1521,12 +1660,8 @@ const navigationBadge = (id) => {
         return `${mediaLibrary.value.length} media`;
     }
 
-    if (id === 'accounts') {
-        return `${dashboard.value?.accounts?.authorized ?? 0}/${dashboard.value?.accounts?.total ?? 0} connected`;
-    }
-
-    if (id === 'services') {
-        return `${activeCredentialCount.value}/${serviceDefinitions.length} ready`;
+    if (id === 'connections') {
+        return `${dashboard.value?.accounts?.authorized ?? 0} accounts · ${activeCredentialCount.value}/${serviceDefinitions.length} services`;
     }
 
     if (id === 'reports') {
@@ -1539,10 +1674,6 @@ const navigationBadge = (id) => {
 
     if (id === 'settings') {
         return settings.value?.timezone || 'Timezone';
-    }
-
-    if (id === 'profile') {
-        return settings.value?.operator_name || settings.value?.admin_email || 'Local identity';
     }
 
     if (id === 'system') {
@@ -1759,8 +1890,8 @@ const accountOnboardingPlanText = () => {
         '',
         'Next actions',
         '1. Fill the blank intake CSV with every Dust Wave account that should be managed.',
-        '2. Configure any service marked needs setup in Services.',
-        '3. Connect each account from Accounts, then refresh and queue imports for connected supported accounts.',
+        '2. Configure any provider marked needs setup in Connections > Provider setup.',
+        '3. Connect each account from Connections > Connected accounts, then refresh and queue imports for supported accounts.',
         '4. Keep unsupported providers in the notes column for future provider work or manual workflow coverage.',
     ];
 
@@ -1770,22 +1901,16 @@ const accountOnboardingPlanText = () => {
 const copyAccountOnboardingTemplate = async () => {
     accountError.value = '';
 
-    try {
-        await navigator.clipboard.writeText(accountOnboardingTemplateText());
+    if (await writeClipboard(accountOnboardingTemplateText(), accountError)) {
         accountOnboardingCopied.value = 'template';
-    } catch (error) {
-        accountError.value = String(error);
     }
 };
 
 const copyAccountOnboardingPlan = async () => {
     accountError.value = '';
 
-    try {
-        await navigator.clipboard.writeText(accountOnboardingPlanText());
+    if (await writeClipboard(accountOnboardingPlanText(), accountError)) {
         accountOnboardingCopied.value = 'plan';
-    } catch (error) {
-        accountError.value = String(error);
     }
 };
 
@@ -3367,11 +3492,8 @@ const copySystemStatus = async () => {
     appDataPathCopied.value = false;
     systemStatusCopyError.value = '';
 
-    try {
-        await navigator.clipboard.writeText(systemStatusText());
+    if (await writeClipboard(systemStatusText(), systemStatusCopyError)) {
         systemStatusCopied.value = true;
-    } catch (error) {
-        systemStatusCopyError.value = String(error);
     }
 };
 
@@ -3382,8 +3504,10 @@ const copyAppDataPath = async () => {
 
     try {
         const path = await invoke('app_data_directory');
-        await navigator.clipboard.writeText(path);
-        appDataPathCopied.value = true;
+
+        if (await writeClipboard(path, systemStatusCopyError)) {
+            appDataPathCopied.value = true;
+        }
     } catch (error) {
         systemStatusCopyError.value = String(error);
     }
@@ -3516,7 +3640,12 @@ const exportSystemLog = async () => {
 };
 
 const clearSystemLogs = async () => {
-    if (!window.confirm('Clear local system logs?')) {
+    if (!await requestConfirmation({
+        title: 'Clear local system logs?',
+        description: 'This removes the local redacted troubleshooting log history. Connected accounts, posts, media, and credentials are not changed.',
+        confirmLabel: 'Clear logs',
+        danger: true,
+    })) {
         return;
     }
 
@@ -3571,7 +3700,12 @@ const restoreLocalBackup = async () => {
         return;
     }
 
-    if (!window.confirm('Restore this local backup? Current local data will be backed up first, then replaced.')) {
+    if (!await requestConfirmation({
+        title: 'Restore this local backup?',
+        description: 'Dust Wave Social will create a safety backup, replace current local data with the selected backup, and then reload the workspace. Keychain credentials must be reconnected separately.',
+        confirmLabel: 'Restore backup',
+        danger: true,
+    })) {
         return;
     }
 
@@ -3597,6 +3731,15 @@ const restoreLocalBackup = async () => {
 };
 
 const clearResolvedSystemState = async () => {
+    if (!await requestConfirmation({
+        title: 'Clear resolved system state?',
+        description: 'Completed and cancelled background work plus expired provider limits will be removed. Active and failed work will remain available for review.',
+        confirmLabel: 'Clear resolved state',
+        danger: true,
+    })) {
+        return;
+    }
+
     maintenanceRunning.value = true;
     maintenanceError.value = '';
 
@@ -3687,7 +3830,12 @@ const retryFailedAccountImports = async () => {
 const openAttentionNotice = async (notice) => {
     activeView.value = notice.view;
 
+    if (notice.connectionTab) {
+        activeConnectionTab.value = notice.connectionTab;
+    }
+
     if (notice.status) {
+        activePostsMode.value = 'library';
         postFilter.value.status = notice.status;
         postFilter.value.page = 1;
         await loadPostQuery();
@@ -3771,8 +3919,10 @@ const serviceReady = (serviceName) => {
 };
 
 const showServiceTab = (serviceName) => {
+    closeAddAccountModal();
     activeServiceTab.value = serviceName;
-    activeView.value = 'services';
+    activeConnectionTab.value = 'services';
+    activeView.value = 'connections';
 };
 
 const selectServiceTab = (serviceName) => {
@@ -4053,22 +4203,16 @@ const serviceSetupText = (service) => {
 const copyServiceSetup = async (service) => {
     clearServiceFeedback();
 
-    try {
-        await navigator.clipboard.writeText(serviceSetupText(service));
+    if (await writeClipboard(serviceSetupText(service), serviceError)) {
         serviceSetupCopied.value = `${service.id}:setup`;
-    } catch (error) {
-        serviceError.value = String(error);
     }
 };
 
 const copyServiceSetupField = async (service, field) => {
     clearServiceFeedback();
 
-    try {
-        await navigator.clipboard.writeText(serviceSetupFieldValue(service, field));
+    if (await writeClipboard(serviceSetupFieldValue(service, field), serviceError)) {
         serviceSetupCopied.value = `${service.id}:${field.key}`;
-    } catch (error) {
-        serviceError.value = String(error);
     }
 };
 
@@ -4079,19 +4223,19 @@ const providerSetupBundleText = (onlyMissing = false) => {
         `Generated: ${new Date().toLocaleString()}`,
         `Scope: ${onlyMissing ? 'missing or inactive services' : 'all services'}`,
         '',
-        'Use this packet to create or update provider developer apps, then save the returned credentials in Dust Wave Services. Secret values are intentionally not included.',
+        'Use this packet to create or update provider developer apps, then save the returned credentials in Connections > Provider setup. Secret values are intentionally not included.',
         '',
         'Next actions',
         '1. Open each Create App URL and paste the callback URLs, scopes, and setup values below.',
-        '2. Enter each provider client ID/API key, secret, and configuration in the matching Dust Wave Services form.',
-        '3. Select Active, use the single Save Settings action, then use Accounts to start OAuth for each Dust Wave account.',
+        '2. Enter each provider client ID/API key, secret, and configuration in the matching Provider setup form.',
+        '3. Select Active, use the single Save Settings action, then use Connected accounts to start OAuth for each Dust Wave account.',
     ];
 
     if (!services.length) {
         return [
             ...header,
             '',
-            'All configured services are already active. Use Accounts to continue onboarding.',
+            'All configured services are already active. Use Connected accounts to continue onboarding.',
         ].join('\n');
     }
 
@@ -4104,11 +4248,8 @@ const providerSetupBundleText = (onlyMissing = false) => {
 const copyProviderSetupBundle = async (onlyMissing = false) => {
     clearServiceFeedback();
 
-    try {
-        await navigator.clipboard.writeText(providerSetupBundleText(onlyMissing));
+    if (await writeClipboard(providerSetupBundleText(onlyMissing), serviceError)) {
         serviceSetupCopied.value = onlyMissing ? 'bundle:missing' : 'bundle:all';
-    } catch (error) {
-        serviceError.value = String(error);
     }
 };
 
@@ -4451,7 +4592,12 @@ const updateTag = async (uuid) => {
 };
 
 const deleteTag = async (uuid) => {
-    if (!window.confirm('Delete this tag?')) {
+    if (!await requestConfirmation({
+        title: 'Delete this label?',
+        description: 'Posts will remain, but this label will be removed from every post that currently uses it.',
+        confirmLabel: 'Delete label',
+        danger: true,
+    })) {
         return;
     }
 
@@ -4469,7 +4615,12 @@ const deleteTag = async (uuid) => {
 };
 
 const deleteAccount = async (uuid) => {
-    if (!window.confirm('Delete this account?')) {
+    if (!await requestConfirmation({
+        title: 'Disconnect this account?',
+        description: 'Existing post history will remain, but publishing and imports will stop until the account is reconnected.',
+        confirmLabel: 'Disconnect account',
+        danger: true,
+    })) {
         return;
     }
 
@@ -4489,12 +4640,48 @@ const deleteAccount = async (uuid) => {
     }
 };
 
-const refreshMastodonAccount = async (uuid) => {
-    accountRefreshingUuid.value = uuid;
+const accountProviderOperations = {
+    mastodon: {
+        refreshCommand: 'refresh_mastodon_account',
+        importCommand: 'import_mastodon_account_data',
+        importSummary: mastodonImportSummary,
+    },
+    twitter: {
+        refreshCommand: 'refresh_twitter_account',
+        importCommand: 'import_twitter_account_data',
+        importSummary: twitterImportSummary,
+    },
+    facebook_page: {
+        refreshCommand: 'refresh_facebook_page_account',
+        importCommand: 'import_facebook_page_data',
+        importSummary: facebookImportSummary,
+    },
+    instagram: {
+        refreshCommand: 'refresh_instagram_account',
+        importCommand: 'import_instagram_account_data',
+        importSummary: instagramImportSummary,
+    },
+    tiktok: {
+        importCommand: 'import_tiktok_account_data',
+        importSummary: tiktokImportSummary,
+    },
+};
+
+const accountProviderOperation = (account) => accountProviderOperations[account.provider] || null;
+const accountCanRefresh = (account) => Boolean(accountProviderOperation(account)?.refreshCommand);
+
+const refreshAccount = async (account) => {
+    const operation = accountProviderOperation(account);
+
+    if (!operation?.refreshCommand) {
+        return;
+    }
+
+    accountRefreshingUuid.value = account.uuid;
     accountError.value = '';
 
     try {
-        await invoke('refresh_mastodon_account', { uuid });
+        await invoke(operation.refreshCommand, { uuid: account.uuid });
         await load();
     } catch (error) {
         accountError.value = String(error);
@@ -4504,117 +4691,18 @@ const refreshMastodonAccount = async (uuid) => {
     }
 };
 
-const refreshTwitterAccount = async (uuid) => {
-    accountRefreshingUuid.value = uuid;
-    accountError.value = '';
+const importAccountData = async (account) => {
+    const operation = accountProviderOperation(account);
 
-    try {
-        await invoke('refresh_twitter_account', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountRefreshingUuid.value = '';
+    if (!operation?.importCommand) {
+        return;
     }
-};
 
-const refreshFacebookPageAccount = async (uuid) => {
-    accountRefreshingUuid.value = uuid;
+    accountImportingUuid.value = account.uuid;
     accountError.value = '';
 
     try {
-        await invoke('refresh_facebook_page_account', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountRefreshingUuid.value = '';
-    }
-};
-
-const refreshInstagramAccount = async (uuid) => {
-    accountRefreshingUuid.value = uuid;
-    accountError.value = '';
-
-    try {
-        await invoke('refresh_instagram_account', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountRefreshingUuid.value = '';
-    }
-};
-
-const importMastodonAccountData = async (uuid) => {
-    accountImportingUuid.value = uuid;
-    accountError.value = '';
-
-    try {
-        mastodonImportSummary.value = await invoke('import_mastodon_account_data', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountImportingUuid.value = '';
-    }
-};
-
-const importTwitterAccountData = async (uuid) => {
-    accountImportingUuid.value = uuid;
-    accountError.value = '';
-
-    try {
-        twitterImportSummary.value = await invoke('import_twitter_account_data', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountImportingUuid.value = '';
-    }
-};
-
-const importFacebookPageData = async (uuid) => {
-    accountImportingUuid.value = uuid;
-    accountError.value = '';
-
-    try {
-        facebookImportSummary.value = await invoke('import_facebook_page_data', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountImportingUuid.value = '';
-    }
-};
-
-const importInstagramAccountData = async (uuid) => {
-    accountImportingUuid.value = uuid;
-    accountError.value = '';
-
-    try {
-        instagramImportSummary.value = await invoke('import_instagram_account_data', { uuid });
-        await load();
-    } catch (error) {
-        accountError.value = String(error);
-        await load();
-    } finally {
-        accountImportingUuid.value = '';
-    }
-};
-
-const importTikTokAccountData = async (uuid) => {
-    accountImportingUuid.value = uuid;
-    accountError.value = '';
-
-    try {
-        tiktokImportSummary.value = await invoke('import_tiktok_account_data', { uuid });
+        operation.importSummary.value = await invoke(operation.importCommand, { uuid: account.uuid });
         await load();
     } catch (error) {
         accountError.value = String(error);
@@ -4867,6 +4955,7 @@ const createPostFromSelectedMedia = async () => {
         selectedMediaIds.value = [];
         selectedExternalMediaIds.value = [];
         activeView.value = 'posts';
+        activePostsMode.value = 'compose';
         await load();
     } catch (error) {
         mediaError.value = String(error);
@@ -4877,7 +4966,12 @@ const createPostFromSelectedMedia = async () => {
 };
 
 const deleteMedia = async (uuid) => {
-    if (!window.confirm('Delete this media item?')) {
+    if (!await requestConfirmation({
+        title: 'Delete this media item?',
+        description: 'The app-owned copy will be removed permanently. The original file outside Dust Wave Social will not be changed.',
+        confirmLabel: 'Delete media',
+        danger: true,
+    })) {
         return;
     }
 
@@ -4913,7 +5007,12 @@ const deleteSelectedMedia = async () => {
         return;
     }
 
-    if (!window.confirm(`Delete ${items.length} selected media item(s)?`)) {
+    if (!await requestConfirmation({
+        title: `Delete ${items.length} selected media item(s)?`,
+        description: 'The app-owned copies will be removed permanently. Original files outside Dust Wave Social will not be changed.',
+        confirmLabel: 'Delete selected media',
+        danger: true,
+    })) {
         return;
     }
 
@@ -4957,6 +5056,7 @@ const cleanupMediaFiles = async () => {
 
 const resetDraftEditor = () => {
     editingPostUuid.value = '';
+    contextualEditOrigin.value = '';
     draftBody.value = '';
     draftAccountIds.value = defaultDraftAccountIds();
     draftAccountBodies.value = {};
@@ -4972,12 +5072,14 @@ const createPostFromCalendarDate = (date) => {
     resetDraftEditor();
     draftScheduledAt.value = `${date}T09:00`;
     activeView.value = 'posts';
+    activePostsMode.value = 'compose';
 };
 
 const createPostFromCalendarSlot = (date, hour) => {
     resetDraftEditor();
     draftScheduledAt.value = `${date}T${String(hour).padStart(2, '0')}:00`;
     activeView.value = 'posts';
+    activePostsMode.value = 'compose';
 };
 
 const toDateTimeLocal = (value) => {
@@ -5214,9 +5316,12 @@ const closePostDetail = () => {
     postDetailLoading.value = false;
 };
 
-const editPost = async (uuid) => {
+const editPost = async (uuid, originView = '') => {
     draftSaving.value = true;
     draftError.value = '';
+    contextualEditOrigin.value = originView && originView !== 'posts' ? originView : '';
+    activeView.value = 'posts';
+    activePostsMode.value = 'compose';
 
     try {
         const detail = await invoke('post_detail', { uuid });
@@ -5245,6 +5350,27 @@ const editPost = async (uuid) => {
     } finally {
         draftSaving.value = false;
     }
+};
+
+const editSelectedPostFromDetail = async () => {
+    const uuid = selectedPostSummary.value?.uuid;
+    const originView = activeView.value;
+
+    if (!uuid) {
+        return;
+    }
+
+    closePostDetail();
+    await editPost(uuid, originView);
+};
+
+const returnToContextualEditOrigin = () => {
+    if (!contextualEditOrigin.value) {
+        return;
+    }
+
+    activeView.value = contextualEditOrigin.value;
+    contextualEditOrigin.value = '';
 };
 
 const duplicatePost = async (uuid) => {
@@ -5277,7 +5403,12 @@ const validatePost = async (uuid) => {
 };
 
 const deletePost = async (uuid) => {
-    if (!window.confirm('Delete this post?')) {
+    if (!await requestConfirmation({
+        title: 'Delete this post?',
+        description: 'The post will be removed from Dust Wave Social and any queued publishing work for it will be cancelled.',
+        confirmLabel: 'Delete post',
+        danger: true,
+    })) {
         return;
     }
 
@@ -5306,7 +5437,12 @@ const bulkDeletePosts = async () => {
         return;
     }
 
-    if (!window.confirm(`Delete ${selectedPostUuids.value.length} selected post(s)?`)) {
+    if (!await requestConfirmation({
+        title: `Delete ${selectedPostUuids.value.length} selected post(s)?`,
+        description: 'The selected posts will be removed from Dust Wave Social and their queued publishing work will be cancelled.',
+        confirmLabel: 'Delete selected posts',
+        danger: true,
+    })) {
         return;
     }
 
@@ -5335,6 +5471,25 @@ const bulkDeletePosts = async () => {
     }
 };
 
+const openPostScheduleEditor = (post) => {
+    if (editingSchedulePostUuid.value && editingSchedulePostUuid.value !== post.uuid) {
+        delete postScheduleDrafts.value[editingSchedulePostUuid.value];
+    }
+
+    postScheduleDrafts.value[post.uuid] = post.status === 'failed'
+        ? ''
+        : postScheduleDrafts.value[post.uuid] || toDateTimeLocal(post.scheduled_at);
+    editingSchedulePostUuid.value = post.uuid;
+};
+
+const closePostScheduleEditor = () => {
+    if (editingSchedulePostUuid.value) {
+        delete postScheduleDrafts.value[editingSchedulePostUuid.value];
+    }
+
+    editingSchedulePostUuid.value = '';
+};
+
 const schedulePost = async (post) => {
     const scheduledAt = postScheduleDrafts.value[post.uuid] || '';
 
@@ -5355,6 +5510,7 @@ const schedulePost = async (post) => {
         });
 
         delete postScheduleDrafts.value[post.uuid];
+        editingSchedulePostUuid.value = '';
         await load();
     } catch (error) {
         scheduleError.value = String(error);
@@ -5364,6 +5520,14 @@ const schedulePost = async (post) => {
 };
 
 const retryFailedPostNow = async (post) => {
+    if (!await requestConfirmation({
+        title: 'Retry this post now?',
+        description: `“${post.preview || 'Untitled post'}” may publish immediately to every account assigned to it.`,
+        confirmLabel: 'Retry now',
+    })) {
+        return;
+    }
+
     scheduleSaving.value = true;
     scheduleError.value = '';
 
@@ -5376,6 +5540,9 @@ const retryFailedPostNow = async (post) => {
         });
 
         delete postScheduleDrafts.value[post.uuid];
+        if (editingSchedulePostUuid.value === post.uuid) {
+            editingSchedulePostUuid.value = '';
+        }
         await load();
     } catch (error) {
         scheduleError.value = String(error);
@@ -5545,6 +5712,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    confirmationResolver?.(false);
+    confirmationResolver = null;
     draftEditor.value?.destroy();
     stopWorkerLoop();
 });
@@ -5563,16 +5732,20 @@ onUnmounted(() => {
                 </div>
             </div>
             <nav class="sidebar-nav" aria-label="Main navigation">
-                <button
-                    v-for="view in navigationViews"
-                    :key="view.id"
-                    type="button"
-                    :class="{ 'is-active': activeView === view.id }"
-                    @click="activeView = view.id"
-                >
-                    <span>{{ view.label }}</span>
-                    <small>{{ navigationBadge(view.id) }}</small>
-                </button>
+                <section v-for="group in navigationGroups" :key="group.label" class="sidebar-nav-group">
+                    <p>{{ group.label }}</p>
+                    <button
+                        v-for="view in group.views"
+                        :key="view.id"
+                        type="button"
+                        :class="{ 'is-active': activeView === view.id }"
+                        :aria-current="activeView === view.id ? 'page' : undefined"
+                        @click="activeView = view.id"
+                    >
+                        <span>{{ view.label }}</span>
+                        <small>{{ navigationBadge(view.id) }}</small>
+                    </button>
+                </section>
             </nav>
         </aside>
 
@@ -5798,42 +5971,46 @@ onUnmounted(() => {
                         <div class="health-heading-actions">
                             <button
                                 type="button"
-                                class="inline-button"
-                                :disabled="maintenanceRunning || desktopMaintenanceRunning"
-                                @click="clearResolvedSystemState"
-                            >
-                                Clear Resolved State
-                            </button>
-                            <button
-                                type="button"
-                                class="inline-button"
                                 :disabled="desktopMaintenanceRunning || maintenanceRunning"
                                 @click="runDesktopMaintenance()"
                             >
                                 Run Maintenance
                             </button>
-                            <button
-                                type="button"
-                                class="inline-button"
-                                :disabled="staleRecoveryRunning"
-                                @click="recoverStaleProcessingJobs"
-                            >
-                                Recover Stale Jobs
-                            </button>
-                            <button
-                                type="button"
-                                class="inline-button"
-                                :disabled="failedImportRetryRunning || health.counts.failed_jobs === 0"
-                                @click="retryFailedAccountImports"
-                            >
-                                Retry Failed Imports
-                            </button>
-                            <button type="button" class="inline-button" @click="copySystemStatus">
-                                Copy Info
-                            </button>
-                            <button type="button" class="inline-button" @click="copyAppDataPath">
-                                Copy App Data Path
-                            </button>
+                            <details class="system-action-menu">
+                                <summary>More actions</summary>
+                                <div class="system-action-menu-content">
+                                    <button
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="maintenanceRunning || desktopMaintenanceRunning"
+                                        @click="clearResolvedSystemState"
+                                    >
+                                        Clear Resolved State
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="staleRecoveryRunning"
+                                        @click="recoverStaleProcessingJobs"
+                                    >
+                                        Recover Stale Jobs
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="inline-button"
+                                        :disabled="failedImportRetryRunning || health.counts.failed_jobs === 0"
+                                        @click="retryFailedAccountImports"
+                                    >
+                                        Retry Failed Imports
+                                    </button>
+                                    <button type="button" class="inline-button" @click="copySystemStatus">
+                                        Copy Info
+                                    </button>
+                                    <button type="button" class="inline-button" @click="copyAppDataPath">
+                                        Copy App Data Path
+                                    </button>
+                                </div>
+                            </details>
                             <span :class="['status-pill', health.status !== 'ok' ? 'is-warning' : '']">
                                 {{ health.status.replaceAll('_', ' ') }}
                             </span>
@@ -5905,7 +6082,12 @@ onUnmounted(() => {
                     </div>
                 </section>
 
-                <section v-if="activeView === 'system'" class="panel">
+                <details v-if="activeView === 'system'" class="system-disclosure">
+                    <summary>
+                        <span>Technical details</span>
+                        <small>Runtime, media tools, storage, and workspace diagnostics</small>
+                    </summary>
+                <section class="panel">
                     <div class="panel-heading">
                         <div>
                             <h2>Technical Details</h2>
@@ -5919,35 +6101,51 @@ onUnmounted(() => {
                         </div>
                     </div>
                 </section>
+                </details>
 
-                <BackupRestorePanel
-                    v-if="activeView === 'system'"
-                    v-model:restore-path="restoreBackupPath"
-                    :backup-running="backupRunning"
-                    :backup-error="backupError"
-                    :backup-summary="backupSummary"
-                    :restore-running="restoreRunning"
-                    :restore-error="restoreError"
-                    :restore-summary="restoreSummary"
-                    @backup="createLocalBackup"
-                    @choose-restore="chooseRestoreBackupPath"
-                    @restore="restoreLocalBackup"
-                />
+                <details v-if="activeView === 'system'" class="system-disclosure">
+                    <summary>
+                        <span>Backup and restore</span>
+                        <small>Protect or replace the local workspace</small>
+                    </summary>
+                    <BackupRestorePanel
+                        v-model:restore-path="restoreBackupPath"
+                        :backup-running="backupRunning"
+                        :backup-error="backupError"
+                        :backup-summary="backupSummary"
+                        :restore-running="restoreRunning"
+                        :restore-error="restoreError"
+                        :restore-summary="restoreSummary"
+                        @backup="createLocalBackup"
+                        @choose-restore="chooseRestoreBackupPath"
+                        @restore="restoreLocalBackup"
+                    />
+                </details>
 
-                <SoftwareUpdatesPanel
-                    v-if="activeView === 'system'"
-                    :checking="softwareUpdateChecking"
-                    :installing="softwareUpdateInstalling"
-                    :status="softwareUpdateStatus"
-                    :progress="softwareUpdateProgress"
-                    :error="softwareUpdateError"
-                    :available="softwareUpdateAvailable"
-                    :badge="softwareUpdateBadge"
-                    @check="checkSoftwareUpdate"
-                    @install="installSoftwareUpdate"
-                />
+                <details v-if="activeView === 'system'" class="system-disclosure">
+                    <summary>
+                        <span>Software updates</span>
+                        <small>Check, verify, install, and restart</small>
+                    </summary>
+                    <SoftwareUpdatesPanel
+                        :checking="softwareUpdateChecking"
+                        :installing="softwareUpdateInstalling"
+                        :status="softwareUpdateStatus"
+                        :progress="softwareUpdateProgress"
+                        :error="softwareUpdateError"
+                        :available="softwareUpdateAvailable"
+                        :badge="softwareUpdateBadge"
+                        @check="checkSoftwareUpdate"
+                        @install="installSoftwareUpdate"
+                    />
+                </details>
 
-                <section v-if="activeView === 'system'" class="panel">
+                <details v-if="activeView === 'system'" class="system-disclosure">
+                    <summary>
+                        <span>System logs</span>
+                        <small>Review, export, or clear redacted support logs</small>
+                    </summary>
+                <section class="panel">
                     <div class="panel-heading">
                         <div>
                             <h2>System Logs</h2>
@@ -5984,20 +6182,34 @@ onUnmounted(() => {
                         </article>
                     </div>
                 </section>
+                </details>
 
                 <section v-if="activeView === 'reports'" class="panel">
                     <div class="panel-heading">
                         <div>
-                            <h2>Reports</h2>
+                            <h2>Analytics</h2>
                             <p>Audience and provider metrics for connected social accounts.</p>
                         </div>
                         <div class="report-selects">
-                            <select v-model="reportAccountId" class="period-select" :disabled="reportLoading" @change="loadReport(reportAccountId)">
+                            <select
+                                v-model="reportAccountId"
+                                class="period-select"
+                                aria-label="Report account"
+                                :disabled="reportLoading || !snapshot.accounts.length"
+                                @change="loadReport(reportAccountId)"
+                            >
+                                <option v-if="!snapshot.accounts.length" value="">Connect an account first</option>
                                 <option v-for="account in snapshot.accounts" :key="account.uuid" :value="account.id">
                                     {{ account.provider }} · {{ account.username || account.name }}
                                 </option>
                             </select>
-                            <select v-model="reportPeriod" class="period-select" :disabled="reportLoading" @change="loadReport()">
+                            <select
+                                v-model="reportPeriod"
+                                class="period-select"
+                                aria-label="Report period"
+                                :disabled="reportLoading || !snapshot.accounts.length"
+                                @change="loadReport()"
+                            >
                                 <option value="7_days">7 days</option>
                                 <option value="30_days">30 days</option>
                                 <option value="90_days">90 days</option>
@@ -6006,7 +6218,17 @@ onUnmounted(() => {
                     </div>
                     <div v-if="reportLoading" class="form-note">Loading report</div>
                     <div v-else-if="reportError" class="form-error">{{ reportError }}</div>
-                    <div v-else-if="!report" class="empty-row">No account report available yet</div>
+                    <div v-else-if="!report" class="empty-action-row">
+                        <span>{{ snapshot.accounts.length ? 'No account report is available yet.' : 'Connect an account before viewing provider analytics.' }}</span>
+                        <button
+                            v-if="!snapshot.accounts.length"
+                            type="button"
+                            class="inline-button"
+                            @click="activeView = 'connections'; activeConnectionTab = 'accounts'; openAddAccountModal()"
+                        >
+                            Add Account
+                        </button>
+                    </div>
                     <div v-else class="report-layout">
                         <div class="report-provider-panel">
                             <div class="report-kicker">{{ report.provider }} · {{ report.period }}</div>
@@ -6086,26 +6308,21 @@ onUnmounted(() => {
                         </div>
                         <strong>{{ calendarTitle }}</strong>
                         <div class="status-tabs is-compact" role="tablist" aria-label="Calendar range">
-                            <button type="button" :class="{ 'is-active': postFilter.calendar_type === 'month' }" @click="postFilter.calendar_type = 'month'; applyPostFilters()">Month</button>
-                            <button type="button" :class="{ 'is-active': postFilter.calendar_type === 'week' }" @click="postFilter.calendar_type = 'week'; applyPostFilters()">Week</button>
-                            <button type="button" :class="{ 'is-active': postFilter.calendar_type === 'day' }" @click="postFilter.calendar_type = 'day'; applyPostFilters()">Day</button>
+                            <button type="button" role="tab" :aria-selected="postFilter.calendar_type === 'month'" :class="{ 'is-active': postFilter.calendar_type === 'month' }" @click="postFilter.calendar_type = 'month'; applyPostFilters()">Month</button>
+                            <button type="button" role="tab" :aria-selected="postFilter.calendar_type === 'week'" :class="{ 'is-active': postFilter.calendar_type === 'week' }" @click="postFilter.calendar_type = 'week'; applyPostFilters()">Week</button>
+                            <button type="button" role="tab" :aria-selected="postFilter.calendar_type === 'day'" :class="{ 'is-active': postFilter.calendar_type === 'day' }" @click="postFilter.calendar_type = 'day'; applyPostFilters()">Day</button>
                         </div>
                     </div>
-                    <form class="post-query-form" @submit.prevent="applyPostFilters">
-                        <select v-model="postFilter.calendar_type">
-                            <option value="month">Month</option>
-                            <option value="week">Week</option>
-                            <option value="day">Day</option>
-                        </select>
-                        <input v-model="postFilter.date" type="date" />
-                        <select v-model="postFilter.status">
+                    <form class="post-query-form is-calendar-filter" @submit.prevent="applyPostFilters">
+                        <input v-model="postFilter.date" type="date" aria-label="Calendar date" />
+                        <select v-model="postFilter.status" aria-label="Post status">
                             <option value="">Scheduled + history</option>
                             <option value="draft">Drafts</option>
                             <option value="scheduled">Scheduled</option>
                             <option value="published">Published</option>
                             <option value="failed">Failed</option>
                         </select>
-                        <input v-model="postFilter.keyword" placeholder="Search content" />
+                        <input v-model="postFilter.keyword" aria-label="Search post content" placeholder="Search content" />
                         <button type="submit" :disabled="postQueryLoading">Apply</button>
                     </form>
                     <div class="post-filter-popover">
@@ -6276,15 +6493,17 @@ onUnmounted(() => {
                 </section>
 
                 <section v-if="isWorkspaceView" class="panel">
-                    <div class="panel-heading">
-                        <h2>{{ activeViewDefinition.label }}</h2>
-                        <p>{{ activeViewDefinition.description }}</p>
-                    </div>
+                    <WorkspaceTabs
+                        v-if="activeView === 'connections'"
+                        v-model="activeConnectionTab"
+                        :tabs="connectionWorkspaceTabs"
+                        label="Connections area"
+                    />
                     <div class="snapshot-layout">
-                        <article v-if="activeView === 'accounts'" class="snapshot-list">
+                        <article v-if="activeView === 'connections' && activeConnectionTab === 'accounts'" class="snapshot-list">
                             <header>
                                 <div>
-                                    <h3>Accounts</h3>
+                                    <h3>Connected accounts</h3>
                                     <small>{{ connectedImportAccountCount }} ready to import</small>
                                 </div>
                                 <div class="row-actions">
@@ -6305,7 +6524,7 @@ onUnmounted(() => {
                                     <button
                                         type="button"
                                         class="inline-button"
-                                        @click="addAccountModalOpen = true"
+                                        @click="openAddAccountModal()"
                                     >
                                         Add Account
                                     </button>
@@ -6326,20 +6545,48 @@ onUnmounted(() => {
                                 role="dialog"
                                 aria-modal="true"
                                 aria-labelledby="add-account-title"
-                                @click.self="addAccountModalOpen = false"
+                                @click.self="closeAddAccountModal"
                             >
                                 <div class="account-add-modal">
                                     <header>
                                         <div>
                                             <h3 id="add-account-title">Add account</h3>
-                                            <small>Connect a social account you'd like to manage.</small>
+                                            <small>{{ activeAccountProvider ? 'Complete the selected provider setup.' : 'Choose the social provider you want to connect.' }}</small>
                                         </div>
-                                        <button type="button" class="modal-close-button" aria-label="Close add account" @click="addAccountModalOpen = false">
-                                            &times;
-                                        </button>
+                                        <div class="modal-header-actions">
+                                            <button
+                                                v-if="activeAccountProvider"
+                                                type="button"
+                                                class="inline-button"
+                                                @click="activeAccountProvider = ''"
+                                            >
+                                                Back to providers
+                                            </button>
+                                            <button type="button" class="modal-close-button" aria-label="Close add account" @click="closeAddAccountModal">
+                                                &times;
+                                            </button>
+                                        </div>
                                     </header>
+                                    <div v-if="!activeAccountProvider" class="account-provider-choice-list">
+                                        <button
+                                            v-for="provider in accountProviderChoices"
+                                            :key="provider.id"
+                                            type="button"
+                                            class="account-provider-choice"
+                                            @click="activeAccountProvider = provider.id"
+                                        >
+                                            <span>
+                                                <strong>{{ provider.label }}</strong>
+                                                <small>{{ provider.description }}</small>
+                                            </span>
+                                            <span :class="['mini-state', provider.service && serviceReady(provider.service) ? 'is-ok' : 'is-muted']">
+                                                {{ provider.service ? (serviceReady(provider.service) ? 'ready' : 'setup needed') : 'server app' }}
+                                            </span>
+                                        </button>
+                                    </div>
+                                    <div v-else class="account-provider-step">
                                     <div class="account-provider-grid">
-                                <article class="provider-connect-card">
+                                <article v-if="activeAccountProvider === 'twitter'" class="provider-connect-card">
                                     <header>
                                         <strong>X / Twitter</strong>
                                         <span :class="['mini-state', serviceReady('twitter') ? 'is-ok' : 'is-muted']">
@@ -6348,7 +6595,7 @@ onUnmounted(() => {
                                     </header>
                                     <div v-if="!serviceReady('twitter')" class="form-warning">
                                         X service credentials must be active before connecting accounts.
-                                        <button type="button" class="inline-button" @click="showServiceTab('twitter')">Open Services</button>
+                                        <button type="button" class="inline-button" @click="showServiceTab('twitter')">Open Provider Setup</button>
                                     </div>
                                     <form class="twitter-oauth-form" @submit.prevent="connectTwitterAccount">
                                         <input v-model="twitterOAuthDraft.redirect_uri" placeholder="X redirect URI" />
@@ -6368,7 +6615,7 @@ onUnmounted(() => {
                                     </div>
                                 </article>
 
-                                <article class="provider-connect-card">
+                                <article v-if="activeAccountProvider === 'facebook'" class="provider-connect-card">
                                     <header>
                                         <strong>Facebook Page / Instagram</strong>
                                         <span :class="['mini-state', serviceReady('facebook') ? 'is-ok' : 'is-muted']">
@@ -6377,7 +6624,7 @@ onUnmounted(() => {
                                     </header>
                                     <div v-if="!serviceReady('facebook')" class="form-warning">
                                         Facebook service credentials must be active before connecting Pages or Instagram accounts.
-                                        <button type="button" class="inline-button" @click="showServiceTab('facebook')">Open Services</button>
+                                        <button type="button" class="inline-button" @click="showServiceTab('facebook')">Open Provider Setup</button>
                                     </div>
                                     <form class="facebook-oauth-form" @submit.prevent="exchangeFacebookOAuth">
                                         <input v-model="facebookOAuthDraft.redirect_uri" placeholder="Facebook redirect URI" />
@@ -6468,7 +6715,7 @@ onUnmounted(() => {
                                     </div>
                                 </article>
 
-                                <article class="provider-connect-card">
+                                <article v-if="activeAccountProvider === 'mastodon'" class="provider-connect-card">
                                     <header>
                                         <strong>Mastodon</strong>
                                         <span class="mini-state">Server app</span>
@@ -6497,7 +6744,7 @@ onUnmounted(() => {
                                     </div>
                                 </article>
 
-                                <article class="provider-connect-card">
+                                <article v-if="activeAccountProvider === 'tiktok'" class="provider-connect-card">
                                     <header>
                                         <strong>TikTok</strong>
                                         <span :class="['mini-state', serviceReady('tiktok') ? 'is-ok' : 'is-muted']">
@@ -6506,7 +6753,7 @@ onUnmounted(() => {
                                     </header>
                                     <div v-if="!serviceReady('tiktok')" class="form-warning">
                                         TikTok requires the client key, active service status, and HTTPS broker URL before analytics imports.
-                                        <button type="button" class="inline-button" @click="showServiceTab('tiktok')">Open Services</button>
+                                        <button type="button" class="inline-button" @click="showServiceTab('tiktok')">Open Provider Setup</button>
                                     </div>
                                     <div v-else class="form-note">
                                         Authorize in the broker, then paste the returned account values and broker credential here.
@@ -6530,13 +6777,14 @@ onUnmounted(() => {
                                 </article>
                                     </div>
                                 </div>
+                                </div>
                             </div>
                             <div v-if="accountError" class="form-error">{{ accountError }}</div>
                             <div v-if="accountOnboardingCopied" class="form-note">
                                 {{ accountOnboardingCopied === 'template' ? 'Account intake CSV copied.' : 'Account onboarding plan copied.' }}
                             </div>
                             <div class="connected-account-grid">
-                                <button type="button" class="add-account-card" @click="addAccountModalOpen = true">
+                                <button type="button" class="add-account-card" @click="openAddAccountModal()">
                                     <span>+</span>
                                     <strong>Add account</strong>
                                     <small>Connect X, Facebook Page, Instagram, Mastodon, or TikTok.</small>
@@ -6562,83 +6810,20 @@ onUnmounted(() => {
                                     </div>
                                     <div class="connected-account-actions">
                                         <button
-                                            v-if="account.provider === 'mastodon'"
+                                            v-if="accountCanRefresh(account)"
                                             type="button"
                                             class="inline-button"
                                             :disabled="accountRefreshingUuid === account.uuid"
-                                            @click="refreshMastodonAccount(account.uuid)"
+                                            @click="refreshAccount(account)"
                                         >
                                             Refresh
                                         </button>
                                         <button
-                                            v-if="account.provider === 'twitter'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountRefreshingUuid === account.uuid"
-                                            @click="refreshTwitterAccount(account.uuid)"
-                                        >
-                                            Refresh
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'facebook_page'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountRefreshingUuid === account.uuid"
-                                            @click="refreshFacebookPageAccount(account.uuid)"
-                                        >
-                                            Refresh
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'instagram'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountRefreshingUuid === account.uuid"
-                                            @click="refreshInstagramAccount(account.uuid)"
-                                        >
-                                            Refresh
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'mastodon'"
+                                            v-if="accountProviderOperation(account)?.importCommand"
                                             type="button"
                                             class="inline-button"
                                             :disabled="accountImportingUuid === account.uuid"
-                                            @click="importMastodonAccountData(account.uuid)"
-                                        >
-                                            Import
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'twitter'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountImportingUuid === account.uuid"
-                                            @click="importTwitterAccountData(account.uuid)"
-                                        >
-                                            Import
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'facebook_page'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountImportingUuid === account.uuid"
-                                            @click="importFacebookPageData(account.uuid)"
-                                        >
-                                            Import
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'instagram'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountImportingUuid === account.uuid"
-                                            @click="importInstagramAccountData(account.uuid)"
-                                        >
-                                            Import
-                                        </button>
-                                        <button
-                                            v-if="account.provider === 'tiktok'"
-                                            type="button"
-                                            class="inline-button"
-                                            :disabled="accountImportingUuid === account.uuid"
-                                            @click="importTikTokAccountData(account.uuid)"
+                                            @click="importAccountData(account)"
                                         >
                                             Import
                                         </button>
@@ -6652,7 +6837,7 @@ onUnmounted(() => {
                                             Queue
                                         </button>
                                         <button type="button" class="danger-inline-button" :disabled="accountSaving" @click="deleteAccount(account.uuid)">
-                                            Delete
+                                            Disconnect
                                         </button>
                                     </div>
                                 </article>
@@ -6686,10 +6871,10 @@ onUnmounted(() => {
                             <div v-if="queuedImportError" class="form-error">{{ queuedImportError }}</div>
                         </article>
 
-                        <article v-if="activeView === 'services'" class="snapshot-list">
+                        <article v-if="activeView === 'connections' && activeConnectionTab === 'services'" class="snapshot-list">
                             <header>
                                 <div>
-                                    <h3>Services</h3>
+                                    <h3>Provider setup</h3>
                                     <small>{{ serviceReadinessSummary }}</small>
                                 </div>
                                 <div class="row-actions">
@@ -6720,6 +6905,8 @@ onUnmounted(() => {
                                     type="button"
                                     :class="{ 'is-active': activeServiceTab === service.id }"
                                     :disabled="serviceSaving"
+                                    role="tab"
+                                    :aria-selected="activeServiceTab === service.id"
                                     @click="selectServiceTab(service.id)"
                                 >
                                     {{ service.label }}
@@ -6862,6 +7049,8 @@ onUnmounted(() => {
                                     </p>
                                 </form>
                             </section>
+                            <details class="credential-diagnostics">
+                                <summary>Credential diagnostics · {{ configuredCredentialCount }}/{{ credentialStatuses.length }} configured</summary>
                             <div class="credential-grid">
                                 <div v-for="status in credentialStatuses" :key="status.service" class="credential-card">
                                     <div class="credential-card-header">
@@ -6881,21 +7070,30 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                             </div>
+                            </details>
                         </article>
 
                         <article v-if="activeView === 'posts'" class="snapshot-list">
                             <header>
-                                <h3>Posts</h3>
+                                <h3>Post workspace</h3>
                                 <span>{{ postQuery.total }}</span>
                             </header>
+                            <WorkspaceTabs
+                                v-model="activePostsMode"
+                                :tabs="postWorkspaceTabs"
+                                label="Post workspace"
+                            />
+                            <div v-show="activePostsMode === 'library'" class="post-library-controls">
                             <div class="status-tabs" role="tablist" aria-label="Post status">
-                                <button type="button" :class="{ 'is-active': !postFilter.status }" @click="setPostStatusFilter('')">All</button>
-                                <button type="button" :class="{ 'is-active': postFilter.status === 'draft' }" @click="setPostStatusFilter('draft')">Drafts</button>
-                                <button type="button" :class="{ 'is-active': postFilter.status === 'scheduled' }" @click="setPostStatusFilter('scheduled')">Scheduled</button>
-                                <button type="button" :class="{ 'is-active': postFilter.status === 'published' }" @click="setPostStatusFilter('published')">Published</button>
+                                <button type="button" role="tab" :aria-selected="!postFilter.status" :class="{ 'is-active': !postFilter.status }" @click="setPostStatusFilter('')">All</button>
+                                <button type="button" role="tab" :aria-selected="postFilter.status === 'draft'" :class="{ 'is-active': postFilter.status === 'draft' }" @click="setPostStatusFilter('draft')">Drafts</button>
+                                <button type="button" role="tab" :aria-selected="postFilter.status === 'scheduled'" :class="{ 'is-active': postFilter.status === 'scheduled' }" @click="setPostStatusFilter('scheduled')">Scheduled</button>
+                                <button type="button" role="tab" :aria-selected="postFilter.status === 'published'" :class="{ 'is-active': postFilter.status === 'published' }" @click="setPostStatusFilter('published')">Published</button>
                                 <button
                                     v-if="postQuery.has_failed_posts || postFilter.status === 'failed'"
                                     type="button"
+                                    role="tab"
+                                    :aria-selected="postFilter.status === 'failed'"
                                     :class="{ 'is-active': postFilter.status === 'failed' }"
                                     @click="setPostStatusFilter('failed')"
                                 >
@@ -6903,7 +7101,7 @@ onUnmounted(() => {
                                 </button>
                             </div>
                             <form class="post-query-form is-post-index" @submit.prevent="applyPostFilters">
-                                <input v-model="postFilter.keyword" placeholder="Search content" />
+                                <input v-model="postFilter.keyword" aria-label="Search post content" placeholder="Search content" />
                                 <button type="submit" :disabled="postQueryLoading">Filter</button>
                             </form>
                             <div class="post-filter-popover">
@@ -6950,10 +7148,27 @@ onUnmounted(() => {
                                     </section>
                                 </div>
                             </div>
+                            </div>
+                            <div v-show="activePostsMode === 'compose'" class="post-composer-workspace">
                             <form class="draft-form" @submit.prevent="saveDraftPost">
                                 <div v-if="editingPostUuid" class="editor-state">
-                                    <span>Editing {{ editingPostUuid }}</span>
-                                    <button type="button" class="inline-button" @click="resetDraftEditor">Cancel</button>
+                                    <div class="editor-state-copy">
+                                        <span>Editing {{ editingPostUuid }}</span>
+                                        <small v-if="contextualEditOrigin">Opened from {{ contextualEditOriginLabel }}</small>
+                                    </div>
+                                    <div class="row-actions">
+                                        <button
+                                            v-if="contextualEditOrigin"
+                                            type="button"
+                                            class="inline-button"
+                                            @click="returnToContextualEditOrigin"
+                                        >
+                                            Back to {{ contextualEditOriginLabel }}
+                                        </button>
+                                        <button type="button" class="inline-button" @click="resetDraftEditor">
+                                            Cancel editing
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="composer-panel">
                                     <header class="composer-section-header">
@@ -7322,6 +7537,8 @@ onUnmounted(() => {
                                     </li>
                                 </ul>
                             </div>
+                            </div>
+                            <div v-show="activePostsMode === 'library'" class="post-library">
                             <div v-if="selectedPostUuids.length" class="selectable-bar">
                                 <strong>{{ selectedPostUuids.length }} selected</strong>
                                 <div class="row-actions">
@@ -7416,20 +7633,14 @@ onUnmounted(() => {
                                         >
                                             Retry Now
                                         </button>
-                                        <input
-                                            v-if="canSchedulePost(post) || canRetryPost(post)"
-                                            v-model="postScheduleDrafts[post.uuid]"
-                                            class="schedule-input"
-                                            type="datetime-local"
-                                        />
                                         <button
                                             v-if="canSchedulePost(post) || canRetryPost(post)"
                                             type="button"
                                             class="inline-button"
                                             :disabled="scheduleSaving"
-                                            @click="schedulePost(post)"
+                                            @click="openPostScheduleEditor(post)"
                                         >
-                                            {{ post.status === 'failed' ? 'Retry At' : 'Schedule' }}
+                                            {{ post.status === 'failed' ? 'Retry later' : post.scheduled_at ? 'Reschedule' : 'Schedule' }}
                                         </button>
                                         <button v-if="canEditPost(post)" type="button" class="inline-button" :disabled="draftSaving" @click="editPost(post.uuid)">
                                             Edit
@@ -7445,6 +7656,27 @@ onUnmounted(() => {
                                             Delete
                                         </button>
                                     </div>
+                                    <ContextualEditor
+                                        v-if="editingSchedulePostUuid === post.uuid"
+                                        class="post-schedule-editor"
+                                        :title="post.status === 'failed' ? 'Retry post later' : 'Schedule post'"
+                                        description="Choose when this post should enter the publishing queue."
+                                        :save-label="post.status === 'failed' ? 'Schedule retry' : 'Schedule post'"
+                                        :busy="scheduleSaving"
+                                        @save="schedulePost(post)"
+                                        @cancel="closePostScheduleEditor"
+                                    >
+                                        <label class="contextual-editor-field">
+                                            <span>Date and time</span>
+                                            <input
+                                                v-model="postScheduleDrafts[post.uuid]"
+                                                data-contextual-autofocus
+                                                class="schedule-input"
+                                                type="datetime-local"
+                                                :aria-label="post.status === 'failed' ? 'Retry date and time' : 'Schedule date and time'"
+                                            />
+                                        </label>
+                                    </ContextualEditor>
                                 </div>
                             </div>
                             <div v-if="!postQueryError && postQuery.total > postQuery.per_page" class="pagination-controls">
@@ -7471,6 +7703,7 @@ onUnmounted(() => {
                                     </button>
                                 </div>
                             </div>
+                            </div>
                         </article>
 
                         <article v-if="activeView === 'media'" class="snapshot-list">
@@ -7492,6 +7725,8 @@ onUnmounted(() => {
                                     :key="tab.id"
                                     type="button"
                                     :class="{ 'is-active': activeMediaTab === tab.id }"
+                                    role="tab"
+                                    :aria-selected="activeMediaTab === tab.id"
                                     @click="setMediaTab(tab.id)"
                                 >
                                     {{ tab.label }}
@@ -7587,7 +7822,7 @@ onUnmounted(() => {
                             </div>
                             <div v-if="selectedExternalMediaPolicyNote" class="form-note">{{ selectedExternalMediaPolicyNote }}</div>
                             <form v-if="activeMediaTab === 'uploads'" class="media-filter-form" @submit.prevent="loadMediaLibrary">
-                                <input v-model="mediaFilter.keyword" placeholder="Search media" />
+                                <input v-model="mediaFilter.keyword" aria-label="Search uploaded media" placeholder="Search media" />
                                 <select v-model="mediaFilter.media_type" aria-label="Media type">
                                     <option value="">All</option>
                                     <option value="image">Images</option>
@@ -7609,17 +7844,17 @@ onUnmounted(() => {
                                 <small>{{ mediaImport.source_path ? 'Ready to import' : 'Images, GIFs, videos, and files' }}</small>
                             </div>
                             <form v-if="activeMediaTab === 'uploads'" class="media-import-form" @submit.prevent="importMediaFile">
-                                <input v-model="mediaImport.source_path" placeholder="Local file path" />
+                                <input v-model="mediaImport.source_path" aria-label="Local media file path" placeholder="Local file path" />
                                 <button type="button" class="inline-button" :disabled="mediaSaving" @click="chooseMediaImportSource">
                                     Choose
                                 </button>
-                                <input v-model="mediaImport.name" placeholder="Display name" />
+                                <input v-model="mediaImport.name" aria-label="Imported media display name" placeholder="Display name" />
                                 <button type="submit" :disabled="mediaSaving">Import</button>
                             </form>
                             <form v-if="activeMediaTab === 'uploads'" class="media-download-form" @submit.prevent="downloadExternalMedia">
-                                <input v-model="mediaDownload.url" placeholder="Media URL" />
-                                <input v-model="mediaDownload.name" placeholder="Display name" />
-                                <input v-model="mediaDownload.source" placeholder="Source" />
+                                <input v-model="mediaDownload.url" aria-label="Media URL" placeholder="Media URL" />
+                                <input v-model="mediaDownload.name" aria-label="Downloaded media display name" placeholder="Display name" />
+                                <input v-model="mediaDownload.source" aria-label="Downloaded media source label" placeholder="Source label" />
                                 <button type="submit" :disabled="mediaSaving">Download</button>
                             </form>
                             <div v-if="activeMediaTab === 'uploads' && mediaImportResults.length" class="media-import-results">
@@ -7636,6 +7871,7 @@ onUnmounted(() => {
                             <form v-if="activeMediaTab !== 'uploads'" class="external-media-form" @submit.prevent="searchExternalMedia(1)">
                                 <input
                                     v-model="externalMediaSearch.keyword"
+                                    :aria-label="activeMediaTab === 'gifs' ? 'Search GIFs' : 'Search stock media'"
                                     :placeholder="activeMediaTab === 'gifs' ? 'Search KLIPY' : 'Search external media'"
                                 />
                                 <input v-model="externalMediaSearch.page" min="1" type="number" aria-label="External media page" />
@@ -7760,25 +7996,42 @@ onUnmounted(() => {
 
                         <article v-if="activeView === 'tags'" class="snapshot-list">
                             <header>
-                                <h3>Tags</h3>
+                                    <h3>Labels</h3>
                                 <span>{{ snapshot.tags.length }}</span>
                             </header>
                             <form class="tag-form" @submit.prevent="createTag">
-                                <input v-model="tagDraft.name" maxlength="255" placeholder="Tag name" />
-                                <input v-model="tagDraft.hex_color" maxlength="7" placeholder="#101215" />
+                                <input v-model="tagDraft.name" maxlength="255" aria-label="Label name" placeholder="Label name" />
+                                <input v-model="tagDraft.hex_color" maxlength="7" aria-label="Label color" placeholder="#101215" />
                                 <button type="submit" :disabled="tagSaving">Add</button>
                             </form>
                             <div v-if="tagError" class="form-error">{{ tagError }}</div>
-                            <div v-if="!snapshot.tags.length" class="empty-row">No tags yet</div>
+                            <div v-if="!snapshot.tags.length" class="empty-row">No labels yet</div>
                             <div v-for="tag in snapshot.tags" :key="tag.uuid" class="snapshot-row">
-                                <form v-if="editingTagUuid === tag.uuid" class="tag-edit-form" @submit.prevent="updateTag(tag.uuid)">
-                                    <input v-model="tagEditDraft.name" maxlength="255" placeholder="Tag name" />
-                                    <input v-model="tagEditDraft.hex_color" maxlength="7" placeholder="#101215" />
-                                    <button type="submit" :disabled="tagSaving">Save</button>
-                                    <button type="button" class="inline-button" :disabled="tagSaving" @click="cancelEditTag">
-                                        Cancel
-                                    </button>
-                                </form>
+                                <ContextualEditor
+                                    v-if="editingTagUuid === tag.uuid"
+                                    class="tag-edit-form"
+                                    title="Edit label"
+                                    description="Changes apply anywhere this label is used."
+                                    save-label="Save label"
+                                    :busy="tagSaving"
+                                    @save="updateTag(tag.uuid)"
+                                    @cancel="cancelEditTag"
+                                >
+                                    <label class="contextual-editor-field">
+                                        <span>Name</span>
+                                        <input
+                                            v-model="tagEditDraft.name"
+                                            data-contextual-autofocus
+                                            maxlength="255"
+                                            aria-label="Label name"
+                                            placeholder="Label name"
+                                        />
+                                    </label>
+                                    <label class="contextual-editor-field">
+                                        <span>Color</span>
+                                        <input v-model="tagEditDraft.hex_color" maxlength="7" aria-label="Label color" placeholder="#101215" />
+                                    </label>
+                                </ContextualEditor>
                                 <template v-else>
                                     <div>
                                         <strong>{{ tag.name }}</strong>
@@ -7800,40 +8053,28 @@ onUnmounted(() => {
                     </div>
                 </section>
 
-                <section v-if="activeView === 'profile'" class="panel">
-                    <div class="panel-heading">
-                        <h2>Edit Profile</h2>
-                        <p>Update the local operator profile for this Dust Wave Social workspace.</p>
-                    </div>
-                    <div class="profile-grid">
-                        <article class="snapshot-list">
+                <section v-if="activeView === 'settings'" class="panel">
+                    <form class="settings-panel-stack" @submit.prevent="saveSettings">
+                        <article class="settings-panel">
                             <header>
-                                <h3>Profile Information</h3>
+                                <div>
+                                    <h3>Local identity</h3>
+                                    <p>The operator information used by this local Dust Wave Social workspace.</p>
+                                </div>
                                 <span class="mini-state">Local</span>
                             </header>
-                            <form class="profile-form" @submit.prevent="saveSettings">
-                                <label>
-                                    <span>Name</span>
-                                    <input v-model="settingsDraft.operator_name" maxlength="120" placeholder="Name" />
-                                </label>
-                                <label>
-                                    <span>Email</span>
-                                    <input v-model="settingsDraft.admin_email" type="email" placeholder="Email" />
-                                </label>
-                                <button type="submit" :disabled="settingsSaving">Save Profile</button>
-                            </form>
-                            <div v-if="settingsError" class="form-error">{{ settingsError }}</div>
-                            <div v-if="settingsSaved" class="form-note">Profile saved</div>
-                        </article>
-                        <article class="snapshot-list">
-                            <header>
-                                <h3>Security</h3>
-                                <span class="mini-state is-muted">Desktop</span>
-                            </header>
+                            <label class="settings-row">
+                                <span>Name</span>
+                                <input v-model="settingsDraft.operator_name" maxlength="120" placeholder="Name" />
+                            </label>
+                            <label class="settings-row">
+                                <span>Email</span>
+                                <input v-model="settingsDraft.admin_email" type="email" placeholder="Email" />
+                            </label>
                             <div class="profile-security-list">
                                 <div>
                                     <strong>App Lock</strong>
-                                    <small>No local app password is enabled for this desktop workspace.</small>
+                                    <small>Dust Wave Social does not provide an app-specific password. Use the macOS user account and device lock to control local access.</small>
                                 </div>
                                 <div>
                                     <strong>Sign-In Session</strong>
@@ -7841,15 +8082,7 @@ onUnmounted(() => {
                                 </div>
                             </div>
                         </article>
-                    </div>
-                </section>
 
-                <section v-if="activeView === 'settings'" class="panel">
-                    <div class="panel-heading">
-                        <h2>Settings</h2>
-                        <p>Configure publishing defaults, date and time display, and the default accounts used by new posts.</p>
-                    </div>
-                    <form class="settings-panel-stack" @submit.prevent="saveSettings">
                         <article class="settings-panel">
                             <header>
                                 <div>
@@ -7862,10 +8095,10 @@ onUnmounted(() => {
                                 <span>Desktop alerts</span>
                                 <input v-model="settingsDraft.desktop_notifications" type="checkbox" />
                             </label>
-                            <label class="settings-row">
-                                <span>Email</span>
-                                <input v-model="settingsDraft.admin_email" type="email" placeholder="Admin email" />
-                            </label>
+                            <div class="settings-row">
+                                <span>Alert identity</span>
+                                <small>{{ settingsDraft.admin_email || 'Add an email under Local identity' }}</small>
+                            </div>
                             <div class="settings-row">
                                 <span>Test alert</span>
                                 <button
@@ -7984,7 +8217,18 @@ onUnmounted(() => {
             :media-label="selectedPostSummaryMedia.map((item) => item.media_type).join(', ') || 'None'"
             :preview-cards="selectedPostPreviewCards"
             :timeline="selectedPostTimeline"
+            :can-edit="canEditPost(selectedPostSummary)"
             @close="closePostDetail"
+            @edit="editSelectedPostFromDetail"
+        />
+        <ConfirmDialog
+            :open="confirmationDialog.open"
+            :title="confirmationDialog.title"
+            :description="confirmationDialog.description"
+            :confirm-label="confirmationDialog.confirmLabel"
+            :danger="confirmationDialog.danger"
+            @cancel="resolveConfirmation(false)"
+            @confirm="resolveConfirmation(true)"
         />
     </main>
 </template>

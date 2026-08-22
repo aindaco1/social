@@ -623,6 +623,19 @@ code {
     width: 260px;
 }
 
+.empty-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 52px;
+    padding: 12px;
+    color: var(--dw-ink-muted);
+    background: var(--dw-surface-subtle);
+    border: 1px solid var(--dw-border);
+    border-radius: var(--dw-radius);
+}
+
 .dashboard-report-controls {
     display: grid;
     justify-items: end;
@@ -902,6 +915,10 @@ code {
 
 .post-query-form.is-post-index {
     grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.post-query-form.is-calendar-filter {
+    grid-template-columns: 160px 180px minmax(0, 1fr) auto;
 }
 
 .status-tabs {
@@ -1807,6 +1824,77 @@ code {
     align-items: center;
 }
 
+.contextual-editor {
+    display: grid;
+    min-width: 0;
+    gap: 10px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+}
+
+.contextual-editor-header,
+.contextual-editor-header > div,
+.contextual-editor-field {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.contextual-editor-header strong,
+.contextual-editor-field > span {
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.contextual-editor-header small {
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.contextual-editor-fields {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+}
+
+.contextual-editor-field input,
+.contextual-editor-field textarea,
+.contextual-editor-field select {
+    width: 100%;
+    min-width: 0;
+}
+
+.contextual-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.tag-edit-form.contextual-editor {
+    grid-template-columns: 1fr;
+    flex: 1 1 auto;
+    align-items: stretch;
+}
+
+.tag-edit-form .contextual-editor-fields {
+    grid-template-columns: minmax(0, 1fr) 140px;
+}
+
+.post-schedule-editor {
+    grid-column: 1 / -1;
+    width: min(620px, 100%);
+    justify-self: start;
+}
+
+.post-schedule-editor .contextual-editor-fields {
+    grid-template-columns: minmax(220px, 360px);
+}
+
 .service-form {
     display: grid;
     grid-template-columns: minmax(0, 120px) minmax(0, 1fr) auto auto auto;
@@ -1825,7 +1913,7 @@ code {
 
 .mastodon-app-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 160px) minmax(0, 160px) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
@@ -1833,7 +1921,7 @@ code {
 
 .twitter-oauth-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
@@ -1841,7 +1929,7 @@ code {
 
 .facebook-oauth-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
@@ -1868,10 +1956,27 @@ code {
 
 .mastodon-oauth-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
+}
+
+.mastodon-oauth-form button {
+    grid-column: 1 / -1;
+}
+
+.tiktok-connection-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.tiktok-connection-form input[type="password"],
+.tiktok-connection-form button {
+    grid-column: 1 / -1;
 }
 
 .credential-grid {
@@ -1893,7 +1998,8 @@ code {
 }
 
 .account-add-modal,
-.post-now-modal {
+.post-now-modal,
+.confirmation-dialog {
     display: grid;
     gap: 14px;
     width: min(1040px, 100%);
@@ -1911,10 +2017,16 @@ code {
     background: #ffffff;
 }
 
+.confirmation-dialog {
+    width: min(560px, 100%);
+    background: #ffffff;
+}
+
 .post-detail-modal {
     display: grid;
     gap: 14px;
-    width: min(1120px, 100%);
+    width: min(1120px, calc(100vw - 48px));
+    max-width: 100%;
     max-height: min(820px, calc(100vh - 48px));
     padding: 16px;
     overflow: auto;
@@ -1926,6 +2038,7 @@ code {
 
 .account-add-modal > header,
 .post-now-modal > header,
+.confirmation-dialog > header,
 .post-detail-modal > header {
     display: flex;
     align-items: flex-start;
@@ -1939,6 +2052,7 @@ code {
 
 .account-add-modal h3,
 .post-now-modal h3,
+.confirmation-dialog h3,
 .post-detail-modal h3 {
     margin: 0;
     color: #101215;
@@ -1948,6 +2062,7 @@ code {
 
 .account-add-modal small,
 .post-now-modal > header small,
+.confirmation-dialog > header small,
 .post-detail-modal > header small {
     color: #64748b;
     font-size: 12px;
@@ -1975,7 +2090,16 @@ code {
     border-color: #fecdd3;
 }
 
-.post-now-modal p {
+.post-detail-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.post-now-modal p,
+.confirmation-dialog p {
     margin: 0;
     color: #334155;
     font-size: 14px;
@@ -2132,7 +2256,7 @@ code {
 
 .account-provider-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     margin-bottom: 12px;
 }
@@ -2930,6 +3054,17 @@ code {
     white-space: nowrap;
 }
 
+.editor-state-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.editor-state-copy small {
+    color: #64748b;
+    font-weight: 700;
+}
+
 .draft-form textarea {
     width: 100%;
     min-width: 0;
@@ -2966,6 +3101,7 @@ code {
 .facebook-oauth-form input,
 .mastodon-app-form input,
 .mastodon-oauth-form input,
+.tiktok-connection-form input,
 .account-form input[type="text"],
 .account-form input:not([type]),
 .media-filter-form input,
@@ -3015,6 +3151,7 @@ code {
 .facebook-oauth-form input:focus,
 .mastodon-app-form input:focus,
 .mastodon-oauth-form input:focus,
+.tiktok-connection-form input:focus,
 .service-form input:focus,
 .tag-form input:focus,
 .tag-edit-form input:focus {
@@ -4059,6 +4196,7 @@ code {
 .facebook-entity-selector button,
 .mastodon-app-form button,
 .mastodon-oauth-form button,
+.tiktok-connection-form button,
 .service-form button,
 .tag-edit-form button,
 .tag-form button,
@@ -4842,6 +4980,7 @@ button,
 .facebook-entity-selector button,
 .mastodon-app-form button,
 .mastodon-oauth-form button,
+.tiktok-connection-form button,
 .service-form button,
 .tag-edit-form button,
 .tag-form button,
@@ -4883,6 +5022,7 @@ button:hover:not(:disabled),
 .facebook-entity-selector button:hover:not(:disabled),
 .mastodon-app-form button:hover:not(:disabled),
 .mastodon-oauth-form button:hover:not(:disabled),
+.tiktok-connection-form button:hover:not(:disabled),
 .service-form button:hover:not(:disabled),
 .tag-edit-form button:hover:not(:disabled),
 .tag-form button:hover:not(:disabled),
@@ -5196,6 +5336,216 @@ dd {
     font-size: 18px;
 }
 
+.sidebar-nav-group {
+    display: grid;
+    gap: 6px;
+}
+
+.sidebar-nav-group + .sidebar-nav-group {
+    margin-top: 14px;
+}
+
+.sidebar-nav-group > p {
+    margin: 0 11px 2px;
+    color: var(--dw-ink-soft);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.workspace-mode-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--dw-border);
+}
+
+.workspace-mode-tabs button {
+    color: var(--dw-ink-strong);
+    text-transform: none;
+    background: var(--dw-surface-base);
+    border-color: var(--dw-border);
+}
+
+.workspace-mode-tabs button.is-active {
+    color: var(--dw-surface-base);
+    background: var(--dw-ink-strong);
+    border-color: var(--dw-ink-strong);
+}
+
+.post-library-controls,
+.post-composer-workspace,
+.post-library {
+    min-width: 0;
+}
+
+.post-library-controls {
+    display: grid;
+    gap: 10px;
+}
+
+.post-composer-workspace,
+.post-library {
+    margin-top: 4px;
+}
+
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.account-provider-choice-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.account-provider-choice {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 132px;
+    padding: 20px;
+    color: var(--dw-ink-strong);
+    text-align: left;
+    text-transform: none;
+    background: var(--dw-surface-base);
+    border-color: var(--dw-border);
+}
+
+.account-provider-choice:hover:not(:disabled) {
+    color: var(--dw-ink-strong);
+    background: var(--dw-surface-subtle);
+    border-color: var(--dw-ink-strong);
+}
+
+.account-provider-choice > span:first-child {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+}
+
+.account-provider-choice strong {
+    font-family: var(--dw-font-display);
+    font-size: 22px;
+    line-height: 1.05;
+}
+
+.account-provider-choice small {
+    color: var(--dw-ink-muted);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.account-provider-step {
+    min-width: 0;
+}
+
+.credential-diagnostics,
+.system-disclosure,
+.system-action-menu {
+    color: var(--dw-ink);
+    background: var(--dw-surface-base);
+    border: 1px solid var(--dw-border);
+    border-radius: var(--dw-radius);
+}
+
+.credential-diagnostics {
+    margin-top: 12px;
+}
+
+.credential-diagnostics > summary,
+.system-disclosure > summary,
+.system-action-menu > summary {
+    cursor: pointer;
+    font-weight: 800;
+    list-style-position: inside;
+}
+
+.credential-diagnostics > summary {
+    padding: 12px 14px;
+}
+
+.credential-diagnostics[open] > summary,
+.system-disclosure[open] > summary {
+    border-bottom: 1px solid var(--dw-border);
+}
+
+.credential-diagnostics .credential-grid {
+    padding: 14px;
+    margin: 0;
+}
+
+.system-disclosure {
+    margin-top: 16px;
+    overflow: hidden;
+}
+
+.system-disclosure > summary {
+    display: grid;
+    gap: 3px;
+    padding: 16px 18px;
+}
+
+.system-disclosure > summary small {
+    color: var(--dw-ink-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.system-disclosure > .panel,
+.system-disclosure > section.panel {
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+}
+
+.system-action-menu {
+    position: relative;
+    background: var(--dw-surface-subtle);
+}
+
+.system-action-menu > summary {
+    min-height: 34px;
+    padding: 7px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    text-transform: uppercase;
+}
+
+.system-action-menu-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 640px;
+    padding: 10px;
+    border-top: 1px solid var(--dw-border);
+}
+
+.confirmation-dialog:focus {
+    outline: 3px solid var(--dw-focus-ring);
+    outline-offset: 3px;
+}
+
+.confirmation-dialog .danger-button {
+    color: var(--dw-surface-base);
+    background: var(--dw-danger);
+    border-color: var(--dw-danger);
+}
+
+.confirmation-dialog .danger-button:hover:not(:disabled) {
+    color: var(--dw-surface-base);
+    background: var(--dw-danger-dark);
+    border-color: var(--dw-danger-dark);
+}
+
 @media (max-width: 900px) {
     body {
         min-width: 0;
@@ -5230,6 +5580,11 @@ dd {
 
     .topbar,
     .panel-heading {
+        flex-direction: column;
+    }
+
+    .empty-action-row {
+        align-items: flex-start;
         flex-direction: column;
     }
 
@@ -5272,6 +5627,7 @@ dd {
     .profile-grid,
     .calendar-grid,
     .account-provider-grid,
+    .account-provider-choice-list,
     .connected-account-grid,
     .account-picker-grid,
     .composer-media-library,
@@ -5301,6 +5657,17 @@ dd {
 
     .tag-edit-form {
         grid-template-columns: 1fr;
+    }
+
+    .tag-edit-form .contextual-editor-fields,
+    .post-schedule-editor .contextual-editor-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .editor-state {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 8px;
     }
 
     .service-form {
@@ -5379,6 +5746,10 @@ dd {
     }
 
     .mastodon-oauth-form {
+        grid-template-columns: 1fr;
+    }
+
+    .tiktok-connection-form {
         grid-template-columns: 1fr;
     }
 

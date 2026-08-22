@@ -2,23 +2,22 @@
 
 Audience: product, engineering, QA, support, and release operators.
 
-This document describes the current product surface. Release readiness and manual acceptance belong in [MVP_LAUNCH_PLAN.md](MVP_LAUNCH_PLAN.md); implementation boundaries belong in [ARCHITECTURE.md](ARCHITECTURE.md).
+This document describes the current product surface. The canonical operator journeys and their regression IDs are in [USER_FLOWS.md](USER_FLOWS.md); release readiness and manual acceptance belong in [MVP_LAUNCH_PLAN.md](MVP_LAUNCH_PLAN.md); implementation boundaries belong in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Desktop workflows
 
 The production desktop interface contains these first-class workflows:
 
 - Dashboard: local status summaries, upcoming and failed posts, provider metrics, audience history, and selectable reporting periods.
-- Posts: status tabs, keyword/account/tag filters, pagination, bulk selection, post details, provider previews, error history, retry, duplicate, and delete actions.
+- Posts: separate Compose and Post library modes; status tabs, keyword/account/label filters, pagination, bulk selection, post details with Edit in composer, provider previews, error history, contextual schedule/retry-time editing, retry, duplicate, and delete actions.
 - Composer: selected accounts, original and account-specific versions, TipTap editing, emoji picker, labels, media drawer, autosave/recovery, provider validation, previews, scheduling, and post-now confirmation.
-- Calendar: month/day cells, an hourly week grid, scheduled-post details, and composer shortcuts with prefilled dates and times.
+- Calendar: month/day cells, an hourly week grid, scheduled-post details, composer shortcuts with prefilled dates and times, and detail-to-composer editing with a return path to the originating calendar view.
 - Media: local import, drag/drop, URL download, uploaded/stock/GIF tabs, thumbnails, filtering, multi-delete, provider media references, and create-post actions.
-- Accounts: provider-specific connection flows, authorization state, refresh, import, disconnect, setup warnings, and redaction-safe onboarding exports.
-- Services: unified per-provider saves for Keychain-backed credentials, configuration, and active state; explicit readiness feedback; API versions/tiers; setup packets; and missing-service reports.
-- Reports: provider-specific metrics, audience charts, period summaries, loading/empty/error states, and imported post performance.
-- Tags: create, edit, delete, color, filter, and composer assignment.
-- Settings and Profile: local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs.
-- System: health, background-work recovery, media-tool availability, logs, maintenance, backup/restore, app-data path, notifications, and detailed signed updater controls. A compact top-right updater action is available from every workflow, changes from check to install when a signed release is found, reports download/verification/installation progress, and relaunches into the installed version.
+- Connections: a Connected accounts tab for progressive provider-specific onboarding, authorization state, refresh, import, disconnect, setup warnings, and redaction-safe exports; plus a Provider setup tab for unified Keychain-backed credentials, configuration, active state, readiness feedback, API versions/tiers, setup packets, and on-demand diagnostics.
+- Analytics: provider-specific metrics, audience charts, period summaries, loading/empty/error states, and imported post performance.
+- Labels: create, edit, delete, color, filter, and composer assignment.
+- Settings: local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs.
+- System: health and maintenance first, with lower-frequency recovery, media-tool, log, backup/restore, app-data, notification, and signed-updater controls disclosed on demand. A compact top-right updater action is available from every workflow, changes from check to install when a signed release is found, reports download/verification/installation progress, and relaunches into the installed version.
 
 Migration, schema, release-readiness, raw database, provider-capability, and raw queue panels are intentionally excluded from the production UI.
 
