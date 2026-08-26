@@ -56,17 +56,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.8 exists; the checkout may include post-release changes
+Source state: generated from local worktree with uncommitted changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.8_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.9_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `b8e629e6-8c24-4fe8-b3bd-fb7d9a614e26`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.8`
+- Updater version: `0.1.9`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 
@@ -123,14 +123,14 @@ Manual acceptance still required:
 
 Complete these in order:
 
-1. Preserve the published v0.1.8 DMG and updater assets with v0.1.7 as the rollback baseline.
+1. Preserve the published v0.1.8 DMG and updater assets as the rollback baseline for v0.1.9.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Start from an installed v0.1.7 app with representative data, update to v0.1.8, and confirm automatic relaunch plus app-data and Keychain-backed configuration survival.
+8. Start from an installed v0.1.8 app with representative data, update to v0.1.9, and confirm automatic relaunch plus app-data and Keychain-backed configuration survival.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate

@@ -4,6 +4,13 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.9 - 2026-08-26
+
+- Replaced the Dust Wave Social desktop icon with the approved new design
+  across the macOS app, Dock, Finder, and installer surfaces.
+- Kept every bundled icon representation derived from the same approved source
+  so small and large macOS sizes remain consistent.
+
 ## 0.1.8 - 2026-08-26
 
 - Added one quiet signed-update check whenever Dust Wave Social opens. A newer
