@@ -54,10 +54,18 @@ on:
 permissions:
   contents: read
 
+env:
+  # GitHub-hosted check and release jobs already run outside iCloud Drive. Keep
+  # one target tree so an exact-commit release cache can be reused safely.
+  DUSTWAVE_RELEASE_USE_PROJECT_TARGET: "true"
+
 jobs:
   release-check:
     name: Release check
     runs-on: macos-26
+    if: >-
+      github.ref_type != 'tag' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true')
 
     steps:
       - name: Checkout
@@ -74,15 +82,33 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Define Rust release cache key
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: rust-release-cache
+        run: ./scripts/rust-release-cache-key.sh
+
+      - name: Restore Rust release compilation cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache@v6
+        with:
+          path: |
+            src-tauri/target/release/.fingerprint
+            src-tauri/target/release/build
+            src-tauri/target/release/deps
+          key: dust-wave-social-rust-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust-release-cache.outputs.toolchain }}-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
+
       - name: Install dependencies
         run: npm ci
 
       - name: Run desktop release checks
         run: npm run desktop:release:check
 
+      - name: Warm exact-commit Rust release compilation
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release --locked --lib
+
   release-bundle:
     name: macOS release bundle
-    needs: release-check
     runs-on: macos-26
     if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true')
     permissions:
@@ -106,8 +132,24 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Define Rust release cache key
+        id: rust-release-cache
+        run: ./scripts/rust-release-cache-key.sh
+
+      - name: Restore exact-commit Rust release compilation
+        uses: actions/cache@v6
+        with:
+          path: |
+            src-tauri/target/release/.fingerprint
+            src-tauri/target/release/build
+            src-tauri/target/release/deps
+          key: dust-wave-social-rust-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust-release-cache.outputs.toolchain }}-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Run desktop release checks
+        run: npm run desktop:release:check
 
       - name: Validate release version and tag
         env:

@@ -34,7 +34,7 @@
         "mvp:release:notes:check": "node scripts/generate-mvp-release-notes.mjs --check",
         "desktop:release:artifact-check": "node scripts/verify-macos-release-artifacts.mjs",
         "desktop:release:version:check": "node scripts/check-desktop-release-version.mjs",
-        "desktop:release:packaging:test": "node scripts/test-macos-dmg-layout.mjs && node scripts/test-tauri-updater-manifest.mjs",
+        "desktop:release:packaging:test": "node scripts/test-macos-dmg-layout.mjs && node scripts/test-tauri-updater-manifest.mjs && node scripts/test-desktop-release-workflow.mjs",
         "desktop:smoke:launch": "node scripts/smoke-launch-macos.mjs",
         "desktop:smoke:updater": "node scripts/smoke-updater-macos.mjs",
         "desktop:build:with-media": "node scripts/build-desktop-local.mjs --media --dmg",
