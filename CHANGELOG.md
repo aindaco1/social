@@ -4,6 +4,15 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.8 - 2026-08-26
+
+- Added one quiet signed-update check whenever Dust Wave Social opens. A newer
+  release appears in the existing top-bar and System controls; downloading,
+  installation, and restart still require the operator's explicit action.
+- Reused the existing updater check/install state instead of adding a second
+  launch-only updater path, and kept automatic failures out of the global
+  top-bar while retaining their diagnostic status in System.
+
 ## 0.1.7 - 2026-08-22
 
 - Replaced the separate all-provider credential diagnostics matrix with contextual readiness, missing-field guidance, and on-demand settings for the selected provider.

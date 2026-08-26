@@ -254,8 +254,8 @@ const flowContracts = [
     },
     {
         id: 'SYS-06',
-        name: 'check install verify and restart software updates',
-        markers: [['app', 'const checkOrInstallSoftwareUpdate = async () =>'], ['app', "invoke('install_software_update_and_restart'"], ['updates', 'aria-live="polite"'], ['updateButton', ':aria-busy="busy"']],
+        name: 'discover check install verify and restart software updates',
+        markers: [['app', 'void checkSoftwareUpdate({ silent: true })'], ['app', 'const checkOrInstallSoftwareUpdate = async () =>'], ['app', "invoke('install_software_update_and_restart'"], ['updates', 'aria-live="polite"'], ['updateButton', ':aria-busy="busy"']],
     },
     {
         id: 'A11Y-01',

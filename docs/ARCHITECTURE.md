@@ -100,11 +100,14 @@ The default Tauri capability is intentionally narrow:
 - URL opening for OAuth handoff.
 - Signed updater commands.
 
+On each app launch, the Vue updater adapter starts one quiet signed-feed check through the same state and command path used by the manual **Check for updates** controls. The check runs alongside workspace loading, does not download or install a release, and becomes visible only when an update is available or the operator explicitly requests status. Download, signature verification, installation, and restart still require the existing operator action and Rust updater command.
+
 Broaden permissions only when a product workflow requires it and document the decision in the launch plan and security review.
 
 ## Design constraints
 
 - Keep the desktop host local-first and free of hidden telemetry or cloud AI fallbacks.
+- Limit the automatic launch check to the public signed release feed; do not attach credentials, account data, posts, media, logs, reports, or device profiling.
 - Require visible operator intent for externally visible or destructive actions.
 - Keep migrations, schema details, raw queues, and database inspection out of production UI.
 - Preserve original media and create explicit derivatives.

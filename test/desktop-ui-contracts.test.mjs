@@ -253,6 +253,24 @@ test('topbar updater uses the Podcast Visualizer icon and compact check-or-insta
     assert.ok(updateStatusButtonSource.includes(':aria-busy="busy"'));
 });
 
+test('launch update checks stay quiet and reuse the manual signed-update path', () => {
+    const updateCheck = sourceBetween('const checkSoftwareUpdate', 'const installSoftwareUpdate');
+    const mountedLifecycle = sourceBetween('onMounted(async () =>', 'onUnmounted(() =>');
+
+    assert.ok(updateCheck.includes('async ({ silent = false } = {})'));
+    assert.ok(updateCheck.includes("await checkForUpdate({ timeout: 15000 })"));
+    assert.ok(updateCheck.includes('softwareUpdateLastCheckWasAutomatic.value = silent'));
+    assert.ok(updateCheck.includes('softwareUpdateLastCheckWasAutomatic.value = false'));
+    assert.ok(updateCheck.includes("softwareUpdateStatus.value = softwareUpdateLastCheckWasAutomatic.value"));
+    assert.ok(updateCheck.includes("? 'Automatic update check unavailable'"));
+    assert.equal((mountedLifecycle.match(/checkSoftwareUpdate/g) || []).length, 1);
+    assert.ok(mountedLifecycle.includes('void checkSoftwareUpdate({ silent: true })'));
+    assert.ok(appSource.includes(':checking="softwareUpdateCheckingVisible"'));
+    assert.ok(appSource.includes(':status="softwareUpdateTopbarStatus"'));
+    assert.ok(appSource.includes(':error="softwareUpdateTopbarError"'));
+    assert.equal(mountedLifecycle.includes('installSoftwareUpdate'), false);
+});
+
 test('Tauri updater resources stay outside Vue deep-reactivity proxies', () => {
     assert.match(appSource, /import\s*\{[^}]*\bshallowRef\b[^}]*\}\s*from 'vue'/);
     assert.ok(appSource.includes('const softwareUpdateAvailable = shallowRef(null)'));

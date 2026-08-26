@@ -27,7 +27,7 @@ The launch source of truth is [docs/MVP_LAUNCH_PLAN.md](docs/MVP_LAUNCH_PLAN.md)
 - Import provider audience and post metrics into local dashboards and reports.
 - Run durable publishing and import jobs with rate-limit deferral and failure recovery while the app is open.
 - Store app state in SQLite, media in the app-data directory, and secrets in the macOS Keychain.
-- Back up and restore app data, inspect redacted logs, receive desktop notifications, and install signed updates.
+- Back up and restore app data, inspect redacted logs, receive desktop notifications, and install signed updates. The app quietly checks the signed GitHub release feed once when it opens; downloading and installation remain operator approved.
 - Use opt-in, on-device media tools for image upscaling, quality preflight, crop suggestions, local media search, and editable alt-text drafts.
 
 See [docs/FEATURES.md](docs/FEATURES.md) for the provider matrix, current limitations, and deferred work. The canonical operator journeys and their regression IDs are in [docs/USER_FLOWS.md](docs/USER_FLOWS.md).

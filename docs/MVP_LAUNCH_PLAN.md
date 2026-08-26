@@ -56,17 +56,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.7 exists; the checkout may include post-release changes
+Source state: generated from local worktree with uncommitted changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.7_aarch64.dmg`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.8_aarch64.dmg`
 - Recorded notarization submission (verify it matches this DMG): `e9e684b2-7c90-422c-82f3-e42a43ef9010`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.7`
+- Updater version: `0.1.8`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 

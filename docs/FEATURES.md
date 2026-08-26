@@ -17,7 +17,7 @@ The production desktop interface contains these first-class workflows:
 - Analytics: provider-specific metrics, audience charts, period summaries, loading/empty/error states, and imported post performance.
 - Labels: create, edit, delete, color, filter, and composer assignment.
 - Settings: local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs.
-- System: health and maintenance first, with lower-frequency recovery, media-tool, log, backup/restore, app-data, notification, and signed-updater controls disclosed on demand. A compact top-right updater action is available from every workflow, changes from check to install when a signed release is found, reports download/verification/installation progress, and relaunches into the installed version.
+- System: health and maintenance first, with lower-frequency recovery, media-tool, log, backup/restore, app-data, notification, and signed-updater controls disclosed on demand. One quiet signed-feed check runs when the app opens. A compact top-right updater action is available from every workflow, surfaces a newer release, changes from check to install, reports download/verification/installation progress, and relaunches into the installed version only after explicit operator approval.
 
 Migration, schema, release-readiness, raw database, provider-capability, and raw queue panels are intentionally excluded from the production UI.
 
@@ -81,7 +81,7 @@ True shared image/text embeddings and model-backed image captioning are deferred
 - Restore validates the manifest and creates a safety backup before replacing local data.
 - System logs and support exports redact tokens, client secrets, API keys, and refresh tokens.
 - Desktop notifications are limited to useful operational events.
-- GitHub Releases provide signed updater discovery and installation.
+- GitHub Releases provide signed updater discovery at launch or on demand; downloading and installation remain explicit operator actions.
 
 ## Deferred work
 

@@ -1,8 +1,8 @@
 # Dust Wave Social User Flows
 
-Updated: 2026-08-22
+Updated: 2026-08-26
 
-This is the canonical operator-flow inventory for the local desktop product. `FEATURES.md` defines the supported feature surface; this document defines how an operator reaches an outcome, the UX state verified in the 2026-08-22 audit, and the regression guard for that journey.
+This is the canonical operator-flow inventory for the local desktop product. `FEATURES.md` defines the supported feature surface; this document defines how an operator reaches an outcome, the UX state established in the 2026-08-22 audit and subsequent fixes, and the regression guard for that journey.
 
 ## Status key
 
@@ -98,7 +98,7 @@ Every ID below has a matching test in `test/desktop-user-flows.test.mjs`. The so
 | SYS-03 | Open System logs to refresh, export, or clear redacted logs; use More actions to copy support info or the app-data path. | Fixed. Technical/recovery sections are collapsed until requested. Clear uses the shared confirmation dialog and support exports are designed to redact secrets. | Export redaction remains part of release acceptance. |
 | SYS-04 | Create a local backup containing database, app-owned media, and manifest without Keychain secrets. | Healthy. Scope and latest backup details are visible. | Manual packaged backup acceptance. |
 | SYS-05 | Choose a Dust Wave backup, create a safety backup, restore, reload, and reconnect credentials. | Healthy. Restore is disabled without a path and requires explicit confirmation describing replacement. | Manual gate on an isolated app-data directory. |
-| SYS-06 | Check for a signed GitHub release, download, verify, install, and restart. | Healthy locally. Status/progress/error remain visible and updater resources avoid Vue proxying. | Manual signed/stapled update-path acceptance. |
+| SYS-06 | Open the app to check the signed GitHub feed quietly, or check on demand; review an available release, then explicitly download, verify, install, and restart. | Fixed. Launch discovery reuses the manual signed-update path and stays out of the top bar when current or temporarily unavailable. Available releases surface in the existing controls; updater resources remain outside Vue deep proxies. | Automated launch/check contracts; the signed/stapled install-and-restart path remains a manual release gate. |
 
 ## Cross-cutting accessibility
 

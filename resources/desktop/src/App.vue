@@ -727,12 +727,25 @@ const appDataPathCopied = ref(false);
 const systemStatusCopied = ref(false);
 const systemStatusCopyError = ref('');
 const softwareUpdateChecking = ref(false);
+const softwareUpdateCheckingSilently = ref(false);
+const softwareUpdateLastCheckWasAutomatic = ref(false);
 const softwareUpdateInstalling = ref(false);
 const softwareUpdateStatus = ref(SOFTWARE_UPDATE_IDLE_STATUS);
 const softwareUpdateError = ref('');
 const softwareUpdateProgress = ref('');
 // Tauri updater resources carry private class state and must not be wrapped in a Vue proxy.
 const softwareUpdateAvailable = shallowRef(null);
+const softwareUpdateCheckingVisible = computed(
+    () => softwareUpdateChecking.value && !softwareUpdateCheckingSilently.value,
+);
+const softwareUpdateTopbarStatus = computed(() => (
+    softwareUpdateLastCheckWasAutomatic.value && !softwareUpdateAvailable.value
+        ? ''
+        : softwareUpdateStatus.value
+));
+const softwareUpdateTopbarError = computed(() => (
+    softwareUpdateLastCheckWasAutomatic.value ? '' : softwareUpdateError.value
+));
 const settingsSaving = ref(false);
 const settingsError = ref('');
 const settingsSaved = ref(false);
@@ -3555,15 +3568,38 @@ const updaterErrorMessage = (error) => {
     return message || 'Software update check failed';
 };
 
-const checkSoftwareUpdate = async () => {
+const checkSoftwareUpdate = async ({ silent = false } = {}) => {
+    if (softwareUpdateChecking.value) {
+        if (!silent && softwareUpdateCheckingSilently.value) {
+            softwareUpdateCheckingSilently.value = false;
+            softwareUpdateLastCheckWasAutomatic.value = false;
+            softwareUpdateError.value = '';
+            softwareUpdateProgress.value = '';
+            softwareUpdateStatus.value = 'Checking GitHub Releases for updates';
+        }
+
+        return;
+    }
+
+    if (softwareUpdateInstalling.value) {
+        return;
+    }
+
     softwareUpdateChecking.value = true;
-    softwareUpdateError.value = '';
-    softwareUpdateProgress.value = '';
-    softwareUpdateStatus.value = 'Checking GitHub Releases for updates';
+    softwareUpdateCheckingSilently.value = silent;
+    softwareUpdateLastCheckWasAutomatic.value = silent;
+
+    if (!silent) {
+        softwareUpdateError.value = '';
+        softwareUpdateProgress.value = '';
+        softwareUpdateStatus.value = 'Checking GitHub Releases for updates';
+    }
 
     try {
         const update = await checkForUpdate({ timeout: 15000 });
         softwareUpdateAvailable.value = update;
+        softwareUpdateError.value = '';
+        softwareUpdateProgress.value = '';
 
         if (update) {
             softwareUpdateStatus.value = `Version ${update.version} is available`;
@@ -3574,9 +3610,12 @@ const checkSoftwareUpdate = async () => {
     } catch (error) {
         softwareUpdateAvailable.value = null;
         softwareUpdateError.value = updaterErrorMessage(error);
-        softwareUpdateStatus.value = 'Update check unavailable';
+        softwareUpdateStatus.value = softwareUpdateLastCheckWasAutomatic.value
+            ? 'Automatic update check unavailable'
+            : 'Update check unavailable';
     } finally {
         softwareUpdateChecking.value = false;
+        softwareUpdateCheckingSilently.value = false;
     }
 };
 
@@ -3644,7 +3683,7 @@ const installSoftwareUpdate = async () => {
 };
 
 const checkOrInstallSoftwareUpdate = async () => {
-    if (softwareUpdateChecking.value || softwareUpdateInstalling.value) {
+    if (softwareUpdateInstalling.value) {
         return;
     }
 
@@ -5832,6 +5871,7 @@ const postWindowLabel = computed(() => {
 
 onMounted(async () => {
     restoreComposerDraft();
+    void checkSoftwareUpdate({ silent: true });
     await load();
     startWorkerLoop();
     runAutoWorkerTick();
@@ -5885,11 +5925,11 @@ onUnmounted(() => {
                 </div>
                 <div class="topbar-actions">
                     <UpdateStatusButton
-                        :checking="softwareUpdateChecking"
+                        :checking="softwareUpdateCheckingVisible"
                         :installing="softwareUpdateInstalling"
-                        :status="softwareUpdateStatus"
+                        :status="softwareUpdateTopbarStatus"
                         :progress="softwareUpdateProgress"
-                        :error="softwareUpdateError"
+                        :error="softwareUpdateTopbarError"
                         :available="softwareUpdateAvailable"
                         @activate="checkOrInstallSoftwareUpdate"
                     />

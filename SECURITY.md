@@ -27,6 +27,10 @@ Do not include live secrets in the report. Redact tokens and keys unless the mai
 - Updater, signing, notarization, or release-artifact integrity issues.
 - Abuse paths that materially enable impersonation, harassment, spam, doxxing, misinformation, or account takeover.
 
+## Automatic Update Check
+
+Dust Wave Social makes one background request to its public signed release feed when the app opens. The request is limited to update discovery and ordinary network metadata; it does not include social credentials, connected-account data, posts, media, reports, logs, or device profiling. The app does not automatically download or install releases. Installing a signed update and restarting the app requires an explicit operator action.
+
 ## Product Risk Reports
 
 Some issues are not classic security bugs but still block a responsible release. Use `docs/BEST_PRACTICES.md` as the red-flag standard. Report product risks privately when public disclosure would help abuse the app or compromise accounts; otherwise record them in the issue tracker with an owner, mitigation, and ship/no-ship decision.
