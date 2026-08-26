@@ -142,7 +142,6 @@ npm ci
 npm run desktop:release:preflight
 npm run mvp:launch:readiness
 npm run local-ai:models:check
-npm run desktop:release:check
 ```
 
 Build the signed Apple Silicon app, LGPL media sidecars, DMG, and updater artifacts:
@@ -155,6 +154,10 @@ npm run desktop:smoke:launch
 npm run mvp:release:notes
 npm run mvp:release:notes:check
 ```
+
+The release build command runs `desktop:release:check` exactly once before it
+packages the app. Do not run the check separately unless you are validating the
+source without building a candidate.
 
 Expected release files:
 
@@ -337,7 +340,8 @@ Publish only signed, notarized, stapled, checksum-recorded artifacts from the ac
 
 ### CI
 
-- `.github/workflows/desktop.yml` runs release checks on branch changes. A synchronized `vX.Y.Z` tag builds the exact tagged source, signs and notarizes the app, creates and notarizes the DMG, verifies app/DMG/updater identity, publishes the GitHub Release, and smokes the published updater. Manual dispatch exposes the same release path.
+- `.github/workflows/desktop.yml` runs release checks on branch changes. A successful `main` push also warms a Rust release cache keyed by the exact commit, locked dependencies, runner architecture, and Rust toolchain. A synchronized `vX.Y.Z` tag restores only Cargo compilation intermediates, reruns every release check on the same runner, rebuilds and relinks the final app from the tagged source, signs and notarizes the app, creates and notarizes the DMG, verifies app/DMG/updater identity, publishes the GitHub Release, and smokes the published updater. Final executables and bundles are never restored from the cache. Manual dispatch exposes the same release path.
+- The v0.1.8 tag workflow is the performance baseline: 23 minutes 58 seconds end to end, including a 12 minute 52 second wait between its release-check and bundle runners. Record the first successful optimized tag duration before describing the improvement as measured rather than projected.
 - `.github/workflows/tiktok-broker.yml` tests and can deploy the TikTok broker and D1 migrations.
 - `.github/workflows/media-staging.yml` tests, dry-runs, and can deploy the media-staging Worker.
 - `.github/workflows/run-tests.yml` covers the retained Mixpost PHP package.
