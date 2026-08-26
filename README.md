@@ -8,6 +8,8 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 Version 0.1.8 is the current published release for Apple Silicon macOS. It is distributed as a signed, notarized, and stapled DMG with signed updater assets. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
 
+Version 0.1.9 is the current release candidate. It replaces the desktop icon with the approved new Dust Wave Social design while leaving application behavior unchanged. Version 0.1.8 remains the public updater and rollback baseline until the protected v0.1.9 release workflow and operator acceptance finish.
+
 Version 0.1.8 adds one quiet signed-feed check when the app opens while retaining explicit operator approval for download and installation. Its protected workflow installed the public signed update over a staged public v0.1.7 app and verified that the replacement relaunched as v0.1.8 in a new process. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, and an independent clean-Mac install still require operator evidence.
 
 Run the current readiness audit instead of copying status counts into another document:
