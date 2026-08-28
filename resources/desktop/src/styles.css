@@ -2469,6 +2469,97 @@ code {
     font-weight: 800;
 }
 
+.service-guided-setup {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.service-guided-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.service-guided-heading div,
+.service-step-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.service-guided-heading strong,
+.service-step-copy strong {
+    color: #101215;
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.service-guided-heading small,
+.service-step-copy small {
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.service-setup-checklist {
+    display: grid;
+    gap: 7px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.service-setup-checklist li {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 9px;
+    align-items: center;
+    min-width: 0;
+    padding: 8px 9px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+}
+
+.service-setup-checklist li.is-next {
+    border-color: #7dd3fc;
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.08);
+}
+
+.service-setup-checklist li.is-complete {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.service-step-number {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 900;
+    background: #e2e8f0;
+    border-radius: 999px;
+}
+
+.is-complete .service-step-number {
+    color: #166534;
+    background: #bbf7d0;
+}
+
+.service-guided-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
 .service-settings-form {
     display: grid;
     gap: 12px;
@@ -2523,6 +2614,24 @@ code {
     .service-enrollment-form {
         grid-template-columns: 1fr;
     }
+
+    .service-guided-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .service-guided-heading > button {
+        align-self: flex-start;
+    }
+
+    .service-setup-checklist li {
+        grid-template-columns: 26px minmax(0, 1fr);
+    }
+
+    .service-setup-checklist li > .mini-state {
+        grid-column: 2;
+        justify-self: start;
+    }
 }
 
 .service-security-note {
@@ -2537,7 +2646,6 @@ code {
     border-radius: 6px;
 }
 
-.service-link-row,
 .service-provider-actions {
     display: flex;
     flex-wrap: wrap;

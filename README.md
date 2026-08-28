@@ -78,6 +78,7 @@ composer test
 - [Features and limits](docs/FEATURES.md)
 - [User flows and UX regression matrix](docs/USER_FLOWS.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Provider integration setup](docs/PROVIDER_SETUP.md)
 - [MVP launch and release operations](docs/MVP_LAUNCH_PLAN.md)
 - [Local AI media](docs/LOCAL_AI.md)
 - [GIF provider decision](docs/GIF_PROVIDER_DECISION.md)

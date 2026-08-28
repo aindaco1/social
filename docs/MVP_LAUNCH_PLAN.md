@@ -186,6 +186,8 @@ Intel and universal macOS builds are outside MVP scope.
 
 ## 3. Configure services
 
+Follow the user-facing [Provider Integration Setup](PROVIDER_SETUP.md) for the shared five-step path, personal test-account policy, exact portal values, and acceptance record. This launch plan owns release readiness and production acceptance; the provider guide owns setup instructions.
+
 In Connections > Provider setup, use `Copy All Setup` or `Copy Missing`. The packet must contain callback URLs, scopes, and setup instructions but no existing secret values.
 
 Store credentials only in provider portals, Cloudflare/GitHub secret stores, or the app's Keychain-backed forms.

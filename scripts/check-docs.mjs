@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { serviceDefinitions } from '../resources/desktop/src/providerSetup.js';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
@@ -20,6 +21,7 @@ const requiredDocuments = [
     'docs/GIF_PROVIDER_DECISION.md',
     'docs/LOCAL_AI.md',
     'docs/MVP_LAUNCH_PLAN.md',
+    'docs/PROVIDER_SETUP.md',
     'docs/SUPPORT_RUNBOOK.md',
     'docs/USER_FLOWS.md',
     'src-tauri/binaries/README.md',
@@ -105,6 +107,24 @@ for (const filePath of files) {
 
         if (!existsSync(path.resolve(path.dirname(filePath), target))) {
             errors.push(`${relative(filePath)} contains a missing relative link: ${match[1]}`);
+        }
+    }
+}
+
+const providerGuide = readFileSync(path.join(projectRoot, 'docs/PROVIDER_SETUP.md'), 'utf8');
+
+for (const service of serviceDefinitions) {
+    if (!providerGuide.includes(`## ${service.label}`)) {
+        errors.push(`docs/PROVIDER_SETUP.md is missing the ${service.label} provider section`);
+    }
+
+    if (!service.managed && !providerGuide.includes(service.setupUrl)) {
+        errors.push(`docs/PROVIDER_SETUP.md is missing the ${service.label} setup URL`);
+    }
+
+    for (const field of service.setupFields || []) {
+        if (!providerGuide.includes(field.value)) {
+            errors.push(`docs/PROVIDER_SETUP.md is missing ${service.label} setup value: ${field.label}`);
         }
     }
 }

@@ -11,6 +11,10 @@ const appSource = await readFile(
     path.join(projectRoot, 'resources', 'desktop', 'src', 'App.vue'),
     'utf8',
 );
+const providerSetupSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'providerSetup.js'),
+    'utf8',
+);
 const updateStatusButtonSource = await readFile(
     path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'UpdateStatusButton.vue'),
     'utf8',
@@ -37,27 +41,31 @@ const desktopStylesSource = await readFile(
 );
 
 function sourceBetween(start, end) {
-    const startIndex = appSource.indexOf(start);
-    const endIndex = appSource.indexOf(end, startIndex + start.length);
+    return sourceBetweenText(appSource, start, end);
+}
+
+function sourceBetweenText(source, start, end) {
+    const startIndex = source.indexOf(start);
+    const endIndex = source.indexOf(end, startIndex + start.length);
 
     assert.notEqual(startIndex, -1, `Missing source marker: ${start}`);
     assert.notEqual(endIndex, -1, `Missing source marker: ${end}`);
 
-    return appSource.slice(startIndex, endIndex);
+    return source.slice(startIndex, endIndex);
 }
 
 test('TikTok service setup defaults to the deployed Dust Wave broker', () => {
-    const match = appSource.match(/const dustWaveTikTokBrokerUrl = '([^']+)'/);
+    const match = providerSetupSource.match(/const dustWaveTikTokBrokerUrl = '([^']+)'/);
 
     assert.ok(match, 'Dust Wave TikTok broker URL constant is missing');
     assert.equal(match[1], 'https://dustwave-tiktok-broker.jogo.workers.dev');
-    assert.ok(appSource.includes("value: `${dustWaveTikTokBrokerUrl}/api/tiktok/oauth/callback`"));
-    assert.ok(appSource.includes('defaultValue: dustWaveTikTokBrokerUrl'));
-    assert.ok(appSource.includes('placeholder: dustWaveTikTokBrokerUrl'));
+    assert.ok(providerSetupSource.includes("value: `${dustWaveTikTokBrokerUrl}/api/tiktok/oauth/callback`"));
+    assert.ok(providerSetupSource.includes('defaultValue: dustWaveTikTokBrokerUrl'));
+    assert.ok(providerSetupSource.includes('placeholder: dustWaveTikTokBrokerUrl'));
 });
 
 test('TikTok desktop credentials exclude the client secret', () => {
-    const tiktokService = sourceBetween("id: 'tiktok'", "id: 'unsplash'");
+    const tiktokService = sourceBetweenText(providerSetupSource, "id: 'tiktok'", "id: 'unsplash'");
 
     assert.ok(tiktokService.includes("field: 'client_id'"));
     assert.equal(tiktokService.includes("field: 'client_secret'"), false);
@@ -150,7 +158,7 @@ test('Instagram is exposed as a first-class Meta account type', () => {
 });
 
 test('Instagram local media offers one-time pairing and retains advanced token setup', () => {
-    const mediaStagingService = sourceBetween("id: 'media_staging'", "id: 'twitter'");
+    const mediaStagingService = sourceBetweenText(providerSetupSource, "id: 'media_staging'", "id: 'twitter'");
 
     assert.ok(mediaStagingService.includes("label: 'Instagram Local Media'"));
     assert.ok(mediaStagingService.includes('managed: true'));
@@ -188,7 +196,7 @@ test('background maintenance stays quiet when it finds nothing to clean up', () 
 });
 
 test('every service configuration uses one explicit save with complete feedback', () => {
-    const serviceDefinitionsSource = sourceBetween('const serviceDefinitions = [', 'const serviceConfigurationDefaults');
+    const serviceDefinitionsSource = sourceBetweenText(providerSetupSource, 'export const serviceDefinitions = [', '\n];');
     const serviceSaveFlow = sourceBetween('const saveServiceSettings', 'const openServiceUrl');
     const servicesMarkup = sourceBetween(
         "<article v-if=\"activeView === 'connections' && activeConnectionTab === 'services'\"",
@@ -215,6 +223,18 @@ test('every service configuration uses one explicit save with complete feedback'
     assert.ok(serviceSaveFlow.includes('missingCredentials'));
     assert.ok(serviceSaveFlow.includes('active: previousActive'));
     assert.ok(serviceSaveFlow.includes('remain in Keychain'));
+});
+
+test('provider setup uses the shared catalog and one guided portal-to-account path', () => {
+    assert.ok(appSource.includes("from '@desktop/providerSetup.js'"));
+    assert.ok(appSource.includes('const activeServiceSetupSteps = computed(() =>'));
+    assert.ok(appSource.includes('Complete these in order.'));
+    assert.ok(appSource.includes('Copy Exact Setup'));
+    assert.ok(appSource.includes('connectActiveServiceAccount'));
+    assert.ok(appSource.includes('verifyActiveMediaService'));
+    assert.ok(providerSetupSource.includes("accountProviderKeys: ['facebook_page', 'instagram']"));
+    assert.ok(providerSetupSource.includes("verificationTab: 'stock'"));
+    assert.ok(providerSetupSource.includes("verificationTab: 'gifs'"));
 });
 
 test('local AI media labs are opt-in and use bundled LiteRT assets', () => {

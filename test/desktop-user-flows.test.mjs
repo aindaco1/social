@@ -21,6 +21,7 @@ const sources = {
     tabs: await projectFile('resources', 'desktop', 'src', 'components', 'WorkspaceTabs.vue'),
     postDetail: await projectFile('resources', 'desktop', 'src', 'components', 'PostDetailModal.vue'),
     preview: await projectFile('resources', 'desktop', 'src', 'components', 'ProviderPreviewCard.vue'),
+    providerSetup: await projectFile('resources', 'desktop', 'src', 'providerSetup.js'),
 };
 const flowDocument = await projectFile('docs', 'USER_FLOWS.md');
 
@@ -140,12 +141,12 @@ const flowContracts = [
     {
         id: 'MEDIA-05',
         name: 'search and download stock media',
-        markers: [['app', "id: 'unsplash'"], ['app', 'const searchExternalMedia = async'], ['app', 'canDownloadExternalMediaItem(item)']],
+        markers: [['providerSetup', "id: 'unsplash'"], ['app', 'const searchExternalMedia = async'], ['app', 'canDownloadExternalMediaItem(item)']],
     },
     {
         id: 'MEDIA-06',
         name: 'search and attach GIF references',
-        markers: [['app', "id: 'klipy'"], ['app', "activeMediaTab === 'gifs' ? 'Search KLIPY'"], ['app', 'Attach only']],
+        markers: [['providerSetup', "id: 'klipy'"], ['app', "activeMediaTab === 'gifs' ? 'Search KLIPY'"], ['app', 'Attach only']],
     },
     {
         id: 'MEDIA-07',
@@ -185,12 +186,12 @@ const flowContracts = [
     {
         id: 'SVC-01',
         name: 'configure and save provider services',
-        markers: [['app', 'const saveServiceSettings = async'], ['app', "invoke('save_service_credential'"], ['app', "invoke('save_service'"], ['app', 'const activeServiceCredentialSummary = computed'], ['app', 'Edit Settings'], ['app', 'role="status" aria-live="polite"']],
+        markers: [['providerSetup', 'export const serviceDefinitions = ['], ['app', 'const activeServiceSetupSteps = computed(() =>'], ['app', 'const saveServiceSettings = async'], ['app', "invoke('save_service_credential'"], ['app', "invoke('save_service'"], ['app', 'const activeServiceCredentialSummary = computed'], ['app', 'Copy Exact Setup'], ['app', 'Edit Settings'], ['app', 'role="status" aria-live="polite"']],
     },
     {
         id: 'SVC-02',
         name: 'open and copy provider setup without secrets',
-        markers: [['app', 'const copyServiceSetupField = async'], ['app', 'const copyProviderSetupBundle = async'], ['app', '<summary>Share setup</summary>'], ['app', 'Provider setup packet copied without secret values.']],
+        markers: [['app', 'const copyServiceSetupField = async'], ['app', 'const copyProviderSetupBundle = async'], ['app', 'providerSetupGuideUrl'], ['app', '<summary>Share setup</summary>'], ['app', 'Provider setup packet copied without secret values.']],
     },
     {
         id: 'SVC-03',
