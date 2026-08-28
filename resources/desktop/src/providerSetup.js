@@ -162,7 +162,7 @@ export const serviceDefinitions = [
         verificationTab: 'gifs',
         setupFields: [
             { key: 'access', label: 'Access path', value: 'Create a Partner Panel app, test with 100 calls/hour, then request production access.' },
-            { key: 'attribution', label: 'Attribution', value: 'Follow Klipy branding and attribution guidance before public release.' },
+            { key: 'attribution', label: 'Attribution', value: 'Keep “Search KLIPY”; display “Powered by KLIPY” with the official logo and provided content attribution before API use.' },
         ],
         credentials: [
             { field: 'client_id', label: 'API Key', autocomplete: 'off' },

@@ -41,7 +41,7 @@ Conclusion:
 - Do not allow the Media Library `Download` action to persist Klipy results. Klipy-selected media should attach to posts as external provider references, not reusable uploaded media records.
 - At publish time, fetch Klipy media only into a temporary file or stream needed for the provider upload, then delete it immediately after success/failure. Do not include temporary Klipy files in backups, restore manifests, media cleanup inventories, or support exports.
 - Do not mix Klipy search results with other GIF-provider result sets unless Klipy gives explicit written consent.
-- Display Klipy attribution/branding in the search UI. Current public guidance says to use `Search KLIPY` as the search field placeholder and recommends Powered by KLIPY logo/watermark use.
+- Display Klipy attribution/branding in the search UI. Keep the required `Search KLIPY` placeholder; before API use, display `Powered by KLIPY` with the official logo and any content attribution supplied by the API. The API Terms are controlling if the developer documentation describes any of these marks as optional.
 - Keep manual/local GIF import independent of Klipy. Operators must be able to import local `.gif` files even if Klipy credentials are absent or Klipy is unavailable.
 - Treat Klipy content filters/blocklists as a release setup task, not a hidden app default.
 

@@ -127,10 +127,10 @@ Open <https://partner.klipy.com/> and create a Partner Panel app under an accoun
 Exact setup values:
 
 - Access path: `Create a Partner Panel app, test with 100 calls/hour, then request production access.`
-- Attribution: `Follow Klipy branding and attribution guidance before public release.`
+- Attribution: `Keep “Search KLIPY”; display “Powered by KLIPY” with the official logo and provided content attribution before API use.`
 - Dust Wave credential field: **API Key**
 
-Save the test key, activate Klipy, open Media > GIFs, and run one controlled search. Klipy media stays a provider reference and may be materialized only as a temporary publish-time file; it must not be added to the reusable local media library. Review [GIF_PROVIDER_DECISION.md](GIF_PROVIDER_DECISION.md) before production use.
+Save the test key, add the required attribution treatment, activate Klipy, open Media > GIFs, and run one controlled search. Klipy media stays a provider reference and may be materialized only as a temporary publish-time file; it must not be added to the reusable local media library. Review [GIF_PROVIDER_DECISION.md](GIF_PROVIDER_DECISION.md) before production use.
 
 ## Mastodon
 
