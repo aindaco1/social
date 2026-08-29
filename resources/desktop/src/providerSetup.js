@@ -5,7 +5,7 @@ export const dustWaveSocialPrivacyUrl = 'https://dustwave.xyz/social/privacy';
 export const dustWaveTikTokPlatforms = 'Web and Desktop';
 export const dustWaveTikTokDomainVerification = 'Verify dustwave.xyz once with a DNS TXT record; this covers the website, Terms, and Privacy URLs.';
 export const dustWaveTikTokProduct = 'Login Kit; add analytics permissions under Scopes because Display API is not a separate product in the current portal.';
-export const dustWaveTikTokReviewGate = 'Use Sandbox to record the real authorization and analytics flow before saving or submitting the Production configuration.';
+export const dustWaveTikTokReviewGate = 'Configure and save Sandbox first, then use Production > Import > Import from Sandbox; add a real target account and demo video before Production save or review.';
 
 export const providerSetupGuideUrl = 'https://github.com/aindaco1/social/blob/main/docs/PROVIDER_SETUP.md';
 

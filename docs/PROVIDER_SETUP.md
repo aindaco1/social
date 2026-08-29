@@ -97,7 +97,7 @@ Exact values:
 - Login Kit Web redirect URI: `https://dustwave-tiktok-broker.jogo.workers.dev/api/tiktok/oauth/callback`
 - MVP analytics scopes: `user.info.basic,user.info.stats,video.list`
 - Future publishing scopes: `video.upload,video.publish`
-- First review gate: `Use Sandbox to record the real authorization and analytics flow before saving or submitting the Production configuration.`
+- First review gate: `Configure and save Sandbox first, then use Production > Import > Import from Sandbox; add a real target account and demo video before Production save or review.`
 - Desktop credential: **Client Key** only
 - Broker URL: `https://dustwave-tiktok-broker.jogo.workers.dev`
 - Publishing mode: **Assisted**
@@ -109,7 +109,8 @@ Use this portal order so the same values are entered only once:
 2. In **Basic information**, upload the 1024px app icon, select **Web** and **Desktop**, and enter the three public URLs above.
 3. Add **Login Kit**. The current portal exposes the Display API permissions through **Scopes**, rather than as a second product, so add only `user.info.basic`, `user.info.stats`, and `video.list`.
 4. In Login Kit, select the **Web** redirect tab and add the broker callback. Do not put the remote HTTPS broker URL under **Desktop**; that tab accepts loopback callbacks such as `localhost` or `127.0.0.1` instead.
-5. Create the first complete authorization-and-analytics demonstration in **Sandbox**, attach the demo video requested by the portal, then save the Production draft. Do not submit it for review until every checklist item below is true.
+5. Create a clearly named Sandbox such as **Dust Wave Social Test**, configure the same app details, Login Kit callback, and scopes there, then click **Apply changes**. In **Sandbox settings**, choose **Add account** and authenticate a real TikTok consumer account; the developer-portal login is not automatically a TikTok target account.
+6. In Production, choose **Import > Import from Sandbox > Dust Wave Social Test** so the verified Sandbox contract is reused instead of re-entered. Add the review explanation and the real end-to-end Sandbox demo video, then save the Production draft. Do not submit it for review until every checklist item below is true.
 
 Direct posting remains disabled until TikTok approves the relevant Content Posting API scope and the product deliberately enables that mode.
 
@@ -123,6 +124,7 @@ Before clicking **Submit for review**, confirm all of the following:
 - `dustwave.xyz` is verified once at the domain level, covering all three public URLs.
 - Login Kit and every requested scope appear in the portal.
 - The broker callback matches exactly under Login Kit's Web redirect tab.
+- A controlled TikTok consumer account appears under Sandbox target users.
 - A Sandbox demo video shows the real Dust Wave Social authorization and analytics flow for the controlled account.
 - The review explanation covers every selected product and scope and does not claim direct publishing when only Assisted mode is implemented.
 

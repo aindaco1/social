@@ -70,6 +70,7 @@ test('TikTok setup models one domain verification and the broker as a Web redire
     assert.ok(providerSetupSource.includes("const dustWaveTikTokPlatforms = 'Web and Desktop'"));
     assert.ok(providerSetupSource.includes('Verify dustwave.xyz once with a DNS TXT record'));
     assert.ok(providerSetupSource.includes('Display API is not a separate product in the current portal'));
+    assert.ok(providerSetupSource.includes('Production > Import > Import from Sandbox'));
     assert.ok(tiktokService.includes("label: 'Login Kit Web redirect URI'"));
     assert.equal(tiktokService.includes("label: 'Broker OAuth callback URL'"), false);
 });
