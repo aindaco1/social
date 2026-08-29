@@ -1,6 +1,6 @@
 # Provider Integration Setup
 
-Updated: 2026-08-28
+Updated: 2026-08-29
 
 Audience: people configuring Dust Wave Social for accounts they control.
 
@@ -97,7 +97,7 @@ Exact values:
 - Login Kit Web redirect URI: `https://dustwave-tiktok-broker.jogo.workers.dev/api/tiktok/oauth/callback`
 - MVP analytics scopes: `user.info.basic,user.info.stats,video.list`
 - Future publishing scopes: `video.upload,video.publish`
-- First review gate: `Configure and save Sandbox first, then use Production > Import > Import from Sandbox; add a real target account and demo video before Production save or review.`
+- First review gate: `Configure and save Sandbox first, then use Production > Import > Import from Sandbox; save the Production draft, then add a real target account and demo video before review.`
 - Desktop credential: **Client Key** only
 - Broker URL: `https://dustwave-tiktok-broker.jogo.workers.dev`
 - Publishing mode: **Assisted**
@@ -105,12 +105,12 @@ Exact values:
 
 Use this portal order so the same values are entered only once:
 
-1. In **URL properties**, choose **Domain**, enter `dustwave.xyz`, and add the generated TXT record at the DNS provider. Domain verification covers the website, Terms, and Privacy URLs together.
+1. In **URL properties**, choose **Domain**, enter `dustwave.xyz`, and add the generated TXT record at the DNS provider. In Cloudflare, use **TXT**, name `@`, and **Auto** TTL. Return to the existing `dustwave.xyz` row under **Unverified properties**, choose **Continue to verify**, and finish that challenge instead of creating a second one. Domain verification covers the website, Terms, and Privacy URLs together.
 2. In **Basic information**, upload the 1024px app icon, select **Web** and **Desktop**, and enter the three public URLs above.
 3. Add **Login Kit**. The current portal exposes the Display API permissions through **Scopes**, rather than as a second product, so add only `user.info.basic`, `user.info.stats`, and `video.list`.
 4. In Login Kit, select the **Web** redirect tab and add the broker callback. Do not put the remote HTTPS broker URL under **Desktop**; that tab accepts loopback callbacks such as `localhost` or `127.0.0.1` instead.
 5. Create a clearly named Sandbox such as **Dust Wave Social Test**, configure the same app details, Login Kit callback, and scopes there, then click **Apply changes**. In **Sandbox settings**, choose **Add account** and authenticate a real TikTok consumer account; the developer-portal login is not automatically a TikTok target account.
-6. In Production, choose **Import > Import from Sandbox > Dust Wave Social Test** so the verified Sandbox contract is reused instead of re-entered. Add the review explanation and the real end-to-end Sandbox demo video, then save the Production draft. Do not submit it for review until every checklist item below is true.
+6. In Production, choose **Import > Import from Sandbox > Dust Wave Social Test** so the verified Sandbox contract is reused instead of re-entered. Add the review explanation and save the Production draft. Record and upload the real end-to-end Sandbox demo only after the controlled target account works. Do not submit the draft for review until every checklist item below is true.
 
 Direct posting remains disabled until TikTok approves the relevant Content Posting API scope and the product deliberately enables that mode.
 
@@ -128,7 +128,9 @@ Before clicking **Submit for review**, confirm all of the following:
 - A Sandbox demo video shows the real Dust Wave Social authorization and analytics flow for the controlled account.
 - The review explanation covers every selected product and scope and does not claim direct publishing when only Assisted mode is implemented.
 
-After approval and broker deployment, open the broker authorization URL, authorize the controlled TikTok account, and paste only the broker-issued opaque connection credential into Dust Wave Social.
+For Sandbox acceptance, deploy the broker with the Sandbox client key and secret, save only that same non-secret Client Key in Dust Wave Social, and open the broker authorization URL from Provider setup. Authorize a Sandbox target account, then copy the returned TikTok user ID, display name, optional username, granted scopes, and opaque connection credential into **Add account > TikTok**. Run **Import** immediately. A newly created account may legitimately return `0 videos · 0 metric days`; a completed import without a broker or authorization error still proves the controlled Sandbox path.
+
+Record that real flow for the review demo. After Production approval, replace the broker's Sandbox client credentials and the desktop Client Key with the Production values before authorizing accounts outside the Sandbox target-user list.
 
 ## Unsplash
 
