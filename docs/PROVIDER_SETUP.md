@@ -113,6 +113,8 @@ After approval and broker deployment, open the broker authorization URL, authori
 
 Open <https://unsplash.com/oauth/applications>, sign in with an account you control, create a clearly named application, and accept the current API guidelines.
 
+On **New API Application**, use the product name and describe the actual stock-search flow. After creation, keep the app in Demo mode for controlled testing and copy the **Access Key** from the Keys section. Do not copy the **Secret key**. Dust Wave Social does not need a redirect URI for its public stock-search flow.
+
 Exact setup value:
 
 - Required access: `Public demo or production access key`
@@ -124,13 +126,15 @@ Save the public access key, activate Unsplash, open Media > Stock, run one contr
 
 Open <https://partner.klipy.com/> and create a Partner Panel app under an account you control.
 
+Use **Add Platform**, name the platform for your product, provide its public product or policy URL, and accept the current API terms yourself. On **Create API Key**, use a key name that identifies the client, such as `Product name macOS`. Leave Ads API off unless the product deliberately implements KLIPY ads and their additional data flow.
+
 Exact setup values:
 
 - Access path: `Create a Partner Panel app, test with 100 calls/hour, then request production access.`
-- Attribution: `Keep “Search KLIPY”; display “Powered by KLIPY” with the official logo and provided content attribution before API use.`
+- Attribution: `Dust Wave Social supplies “Search KLIPY” and “Powered by KLIPY” with the official logo; preserve this treatment and the provided content attribution.`
 - Dust Wave credential field: **API Key**
 
-Save the test key, add the required attribution treatment, activate Klipy, open Media > GIFs, and run one controlled search. Klipy media stays a provider reference and may be materialized only as a temporary publish-time file; it must not be added to the reusable local media library. Review [GIF_PROVIDER_DECISION.md](GIF_PROVIDER_DECISION.md) before production use.
+Save the test key and activate Klipy. Dust Wave Social supplies the required search placeholder and bundled attribution treatment; do not remove or restyle them into invisibility. Open Media > GIFs and run one controlled search. Klipy media stays a provider reference and may be materialized only as a temporary publish-time file; it must not be added to the reusable local media library. Review [GIF_PROVIDER_DECISION.md](GIF_PROVIDER_DECISION.md) before production use.
 
 ## Mastodon
 

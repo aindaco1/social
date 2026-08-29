@@ -146,7 +146,7 @@ const flowContracts = [
     {
         id: 'MEDIA-06',
         name: 'search and attach GIF references',
-        markers: [['providerSetup', "id: 'klipy'"], ['app', "activeMediaTab === 'gifs' ? 'Search KLIPY'"], ['app', 'Attach only']],
+        markers: [['providerSetup', "id: 'klipy'"], ['app', "activeMediaTab === 'gifs' ? 'Search KLIPY'"], ['app', 'aria-label="Powered by KLIPY"'], ['app', 'klipy-logo.svg'], ['app', 'Attach only']],
     },
     {
         id: 'MEDIA-07',

@@ -59,5 +59,7 @@ The common pattern is search/proxy/select/post by URL or ID, with optional local
 
 - Implemented: Klipy credential definition, Provider setup UI entry, GIF search adapter, Klipy response mapper, tests for Klipy result mapping, and a guard that blocks permanent Klipy GIF downloads into the reusable media library.
 - Implemented: selected Klipy results attach to posts as external provider references, appear in composer/post previews, validate through the post content schema, and are fetched only as temporary publish-time upload assets that are deleted after the upload attempt.
+- Implemented: the GIF search surface keeps the required `Search KLIPY` placeholder and displays a bundled official KLIPY logo with a visible `Powered by KLIPY` mark before any result is requested.
 - Implemented: local/manual GIF import through the existing app media library, file picker/drop target, MIME detection, local storage, and media filtering.
-- Pending: production Klipy account, attribution assets/guidelines, content-filter settings, live API acceptance, and written approval only if Dust Wave wants permanent Klipy media-library imports.
+- Accepted 2026-08-28: the signed local macOS bundle stored a rotated Klipy test key in Keychain and returned 18 results for a controlled `hello` search while showing the bundled `Powered by KLIPY` treatment.
+- Pending: production access, content-filter settings, and written approval only if Dust Wave wants permanent Klipy media-library imports.

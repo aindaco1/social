@@ -36,7 +36,20 @@ pub enum ExternalMediaError {
 impl Display for ExternalMediaError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Http(error) => write!(formatter, "external media request failed: {error}"),
+            Self::Http(error) => {
+                if let Some(status) = error.status() {
+                    write!(
+                        formatter,
+                        "external media request failed with HTTP status {status}"
+                    )
+                } else if error.is_timeout() {
+                    write!(formatter, "external media request timed out")
+                } else if error.is_connect() {
+                    write!(formatter, "external media provider could not be reached")
+                } else {
+                    write!(formatter, "external media request failed")
+                }
+            }
             Self::Json(error) => write!(formatter, "external media response was invalid: {error}"),
             Self::Secret(error) => write!(formatter, "{error}"),
             Self::Validation(error) => write!(formatter, "{error}"),
@@ -253,6 +266,19 @@ fn value_string(value: &Value, path: &[&str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redacts_urls_from_http_error_messages() {
+        let secret = "credential-must-not-appear";
+        let error = Client::new()
+            .get(format!("not-a-valid-url/{secret}"))
+            .build()
+            .expect_err("the deliberately invalid URL should fail to build");
+        let message = ExternalMediaError::Http(error).to_string();
+
+        assert_eq!(message, "external media request failed");
+        assert!(!message.contains(secret));
+    }
 
     #[test]
     fn maps_unsplash_search_results_to_mixpost_media_shape() {

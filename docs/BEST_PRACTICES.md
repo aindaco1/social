@@ -30,6 +30,7 @@ Run this review before shipping new publishing, automation, account, analytics, 
 - Avoid features that make impersonation, fake attribution, or coordinated misinformation easier without explicit human review.
 - Treat generated, edited, or externally sourced media as higher-risk content. Do not strip source metadata in ways that make operator review harder unless there is a clear privacy reason.
 - Before enabling third-party media search in production, confirm the provider terms permit the app's actual workflow: previewing, selection, attribution, local thumbnail caching, permanent local storage if any, transient publish-time fetching if needed, backups/support exports, and posting through connected social accounts. Do not assume search providers allow reusable media-library imports.
+- Never render raw HTTP client errors for credential-bearing provider URLs. Reduce them to a status or network category so path-based API keys, query credentials, and tokens cannot appear in the UI, support logs, or screenshots.
 - Provider previews should be accurate enough that operators can catch misleading account, media, or text mismatches before posting.
 
 ### Attention, Notifications, And Healthy Use

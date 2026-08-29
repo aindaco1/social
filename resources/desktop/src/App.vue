@@ -15,6 +15,7 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef
 import { COLOR_PALLET_LIST } from '@/Constants/ColorPallet';
 import Div from '@/Extensions/TipTap/Div';
 import dustWaveSquareLogoUrl from '@desktop/assets/dust-wave-square.png';
+import klipyLogoUrl from '@desktop/assets/klipy-logo.svg';
 import ConfirmDialog from '@desktop/components/ConfirmDialog.vue';
 import ContextualEditor from '@desktop/components/ContextualEditor.vue';
 import UpdateStatusButton from '@desktop/components/UpdateStatusButton.vue';
@@ -2344,7 +2345,7 @@ const loadMediaLibrary = async () => {
 };
 
 const externalMediaSourceLabel = (source) => {
-    return source === 'gifs' ? 'Klipy' : 'Unsplash';
+    return source === 'gifs' ? 'KLIPY' : 'Unsplash';
 };
 
 const externalMediaProvider = (item = null) => String(item?.download_data?.provider || '').toLowerCase();
@@ -8115,6 +8116,16 @@ onUnmounted(() => {
                                     <strong>{{ result.name }}</strong>
                                     <small>{{ result.detail }}</small>
                                 </div>
+                            </div>
+                            <div
+                                v-if="activeMediaTab === 'gifs'"
+                                class="klipy-attribution"
+                                role="img"
+                                aria-label="Powered by KLIPY"
+                            >
+                                <span aria-hidden="true">Powered by</span>
+                                <img :src="klipyLogoUrl" alt="" aria-hidden="true" />
+                                <strong aria-hidden="true">KLIPY</strong>
                             </div>
                             <form v-if="activeMediaTab !== 'uploads'" class="external-media-form" @submit.prevent="searchExternalMedia(1)">
                                 <input

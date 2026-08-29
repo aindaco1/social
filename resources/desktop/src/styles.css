@@ -4323,6 +4323,33 @@ code {
     margin-bottom: 8px;
 }
 
+.klipy-attribution {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    min-height: 34px;
+    padding: 5px 10px;
+    margin-bottom: 8px;
+    color: #101215;
+    background: #fff8d8;
+    border: 1px solid #f4d63f;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.klipy-attribution img {
+    width: 14px;
+    height: 18px;
+}
+
+.klipy-attribution strong {
+    color: #f04420;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+}
+
 .external-media-results > .inline-button {
     justify-self: start;
 }
