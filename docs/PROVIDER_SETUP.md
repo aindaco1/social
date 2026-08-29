@@ -88,18 +88,30 @@ Open <https://developers.tiktok.com/>. Use Sandbox for the first end-to-end demo
 
 Exact values:
 
+- App platforms: `Web and Desktop`
 - Official website: `https://dustwave.xyz/social/`
 - Public Terms URL: `https://dustwave.xyz/social/terms`
 - Public Privacy URL: `https://dustwave.xyz/social/privacy`
-- Broker callback URL: `https://dustwave-tiktok-broker.jogo.workers.dev/api/tiktok/oauth/callback`
+- URL verification: `Verify dustwave.xyz once with a DNS TXT record; this covers the website, Terms, and Privacy URLs.`
+- Analytics product: `Login Kit; add analytics permissions under Scopes because Display API is not a separate product in the current portal.`
+- Login Kit Web redirect URI: `https://dustwave-tiktok-broker.jogo.workers.dev/api/tiktok/oauth/callback`
 - MVP analytics scopes: `user.info.basic,user.info.stats,video.list`
 - Future publishing scopes: `video.upload,video.publish`
+- First review gate: `Use Sandbox to record the real authorization and analytics flow before saving or submitting the Production configuration.`
 - Desktop credential: **Client Key** only
 - Broker URL: `https://dustwave-tiktok-broker.jogo.workers.dev`
 - Publishing mode: **Assisted**
 - Client secret storage: `Store TikTok client secret only in the Cloudflare broker, never in this desktop app.`
 
-Add **Login Kit**, then request only the MVP analytics scopes used by the current broker flow. Direct posting remains disabled until TikTok approves the relevant Content Posting API scope and the product deliberately enables that mode.
+Use this portal order so the same values are entered only once:
+
+1. In **URL properties**, choose **Domain**, enter `dustwave.xyz`, and add the generated TXT record at the DNS provider. Domain verification covers the website, Terms, and Privacy URLs together.
+2. In **Basic information**, upload the 1024px app icon, select **Web** and **Desktop**, and enter the three public URLs above.
+3. Add **Login Kit**. The current portal exposes the Display API permissions through **Scopes**, rather than as a second product, so add only `user.info.basic`, `user.info.stats`, and `video.list`.
+4. In Login Kit, select the **Web** redirect tab and add the broker callback. Do not put the remote HTTPS broker URL under **Desktop**; that tab accepts loopback callbacks such as `localhost` or `127.0.0.1` instead.
+5. Create the first complete authorization-and-analytics demonstration in **Sandbox**, attach the demo video requested by the portal, then save the Production draft. Do not submit it for review until every checklist item below is true.
+
+Direct posting remains disabled until TikTok approves the relevant Content Posting API scope and the product deliberately enables that mode.
 
 The **Client Secret** goes only into the Cloudflare broker secret named `TIKTOK_CLIENT_SECRET`. The same **Client Key** is saved as broker secret `TIKTOK_CLIENT_KEY` and in Dust Wave Social. Never store the Client Secret in the desktop app.
 
@@ -107,9 +119,10 @@ The Social-specific policy pages are public and intentionally use stable extensi
 
 Before clicking **Submit for review**, confirm all of the following:
 
-- The app name, icon, category, description, Desktop platform, public Terms URL, and public Privacy URL are saved.
+- The app name, icon, category, description, Web and Desktop platforms, public website, Terms URL, and Privacy URL are saved.
+- `dustwave.xyz` is verified once at the domain level, covering all three public URLs.
 - Login Kit and every requested scope appear in the portal.
-- The broker callback matches exactly.
+- The broker callback matches exactly under Login Kit's Web redirect tab.
 - A Sandbox demo video shows the real Dust Wave Social authorization and analytics flow for the controlled account.
 - The review explanation covers every selected product and scope and does not claim direct publishing when only Assisted mode is implemented.
 

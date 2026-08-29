@@ -2,6 +2,10 @@ export const dustWaveTikTokBrokerUrl = 'https://dustwave-tiktok-broker.jogo.work
 export const dustWaveWebsiteUrl = 'https://dustwave.xyz/social/';
 export const dustWaveSocialTermsUrl = 'https://dustwave.xyz/social/terms';
 export const dustWaveSocialPrivacyUrl = 'https://dustwave.xyz/social/privacy';
+export const dustWaveTikTokPlatforms = 'Web and Desktop';
+export const dustWaveTikTokDomainVerification = 'Verify dustwave.xyz once with a DNS TXT record; this covers the website, Terms, and Privacy URLs.';
+export const dustWaveTikTokProduct = 'Login Kit; add analytics permissions under Scopes because Display API is not a separate product in the current portal.';
+export const dustWaveTikTokReviewGate = 'Use Sandbox to record the real authorization and analytics flow before saving or submitting the Production configuration.';
 
 export const providerSetupGuideUrl = 'https://github.com/aindaco1/social/blob/main/docs/PROVIDER_SETUP.md';
 
@@ -120,12 +124,16 @@ export const serviceDefinitions = [
         accountProviderKeys: ['tiktok'],
         accountActionLabel: 'Connect TikTok account',
         setupFields: [
+            { key: 'platforms', label: 'App platforms', value: dustWaveTikTokPlatforms },
             { key: 'website', label: 'Official website', value: dustWaveWebsiteUrl },
             { key: 'terms', label: 'Public Terms URL', value: dustWaveSocialTermsUrl },
             { key: 'privacy', label: 'Public Privacy URL', value: dustWaveSocialPrivacyUrl },
-            { key: 'redirect', label: 'Broker OAuth callback URL', value: `${dustWaveTikTokBrokerUrl}/api/tiktok/oauth/callback` },
+            { key: 'verification', label: 'URL verification', value: dustWaveTikTokDomainVerification },
+            { key: 'product', label: 'Analytics product', value: dustWaveTikTokProduct },
+            { key: 'redirect', label: 'Login Kit Web redirect URI', value: `${dustWaveTikTokBrokerUrl}/api/tiktok/oauth/callback` },
             { key: 'scopes', label: 'MVP analytics scopes', value: 'user.info.basic,user.info.stats,video.list' },
             { key: 'publishing_scopes', label: 'Future publishing scopes', value: 'video.upload,video.publish' },
+            { key: 'review', label: 'First review gate', value: dustWaveTikTokReviewGate },
             { key: 'secret', label: 'Client secret storage', value: 'Store TikTok client secret only in the Cloudflare broker, never in this desktop app.' },
         ],
         credentials: [
