@@ -192,7 +192,7 @@ const providerReportDefinitions = {
     ],
     facebook_page: [
         { key: 'page_post_engagements', label: 'Post Engagements', description: 'The number of times people engaged with your posts through reactions, comments, shares, and more' },
-        { key: 'page_posts_impressions', label: 'Posts Impressions', description: "The number of times your Page's posts entered a person screen" },
+        { key: 'page_media_view', label: 'Media Views', description: "The number of times your Page's media was viewed" },
     ],
     instagram: [
         { key: 'likes', label: 'Likes', description: 'The number of likes on your Instagram media' },
@@ -4284,6 +4284,7 @@ const connectActiveServiceAccount = () => {
     const provider = activeServiceDefinition.value.accountProvider;
 
     if (provider) {
+        activeConnectionTab.value = 'accounts';
         openAddAccountModal(provider);
     }
 };

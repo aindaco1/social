@@ -5,6 +5,12 @@ export const dustWaveSocialPrivacyUrl = 'https://dustwave.xyz/social/privacy';
 
 export const providerSetupGuideUrl = 'https://github.com/aindaco1/social/blob/main/docs/PROVIDER_SETUP.md';
 
+export const facebookPageConnectionPermissions = [
+    'pages_show_list',
+    'pages_read_engagement',
+    'read_insights',
+];
+
 export const serviceDefinitions = [
     {
         id: 'facebook',
@@ -18,13 +24,21 @@ export const serviceDefinitions = [
         accountActionLabel: 'Connect Facebook or Instagram',
         setupFields: [
             { key: 'redirect', label: 'OAuth callback URL', value: 'http://localhost/callback' },
-            { key: 'scopes', label: 'Default OAuth scopes', value: 'business_management,pages_show_list,read_insights,pages_manage_posts,pages_read_engagement,pages_manage_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights,instagram_manage_comments' },
+            { key: 'login', label: 'Login model', value: 'Facebook Login for Business · user access token configuration' },
+            { key: 'permissions', label: 'Connection + import permissions', value: facebookPageConnectionPermissions.join(',') },
         ],
         credentials: [
             { field: 'client_id', label: 'App ID', autocomplete: 'off' },
             { field: 'client_secret', label: 'App Secret', autocomplete: 'new-password', secret: true },
         ],
         configuration: [
+            {
+                field: 'login_configuration_id',
+                label: 'Login configuration ID',
+                defaultValue: '',
+                input: 'text',
+                placeholder: 'Meta configuration ID',
+            },
             {
                 field: 'api_version',
                 label: 'API Version',

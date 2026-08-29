@@ -231,7 +231,9 @@ test('provider setup uses the shared catalog and one guided portal-to-account pa
     assert.ok(appSource.includes('Complete these in order.'));
     assert.ok(appSource.includes('Copy Exact Setup'));
     assert.ok(appSource.includes('connectActiveServiceAccount'));
+    assert.ok(appSource.includes("activeConnectionTab.value = 'accounts';\n        openAddAccountModal(provider);"));
     assert.ok(appSource.includes('verifyActiveMediaService'));
+    assert.ok(providerSetupSource.includes("'pages_show_list',\n    'pages_read_engagement',\n    'read_insights',"));
     assert.ok(providerSetupSource.includes("accountProviderKeys: ['facebook_page', 'instagram']"));
     assert.ok(providerSetupSource.includes("verificationTab: 'stock'"));
     assert.ok(providerSetupSource.includes("verificationTab: 'gifs'"));

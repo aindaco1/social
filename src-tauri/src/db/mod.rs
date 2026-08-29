@@ -5215,7 +5215,7 @@ impl Database {
     ) -> Result<Vec<ReportMetric>, DbError> {
         let mut sums = BTreeMap::from([
             ("page_post_engagements".to_string(), 0_i64),
-            ("page_posts_impressions".to_string(), 0_i64),
+            ("page_media_view".to_string(), 0_i64),
         ]);
         let mut statement = connection.prepare(
             "SELECT type, SUM(value)
@@ -5232,14 +5232,14 @@ impl Database {
                 (2, total) => {
                     sums.insert("page_post_engagements".to_string(), total);
                 }
-                (3, total) => {
-                    sums.insert("page_posts_impressions".to_string(), total);
+                (4, total) => {
+                    sums.insert("page_media_view".to_string(), total);
                 }
                 _ => {}
             }
         }
 
-        Ok(["page_post_engagements", "page_posts_impressions"]
+        Ok(["page_post_engagements", "page_media_view"]
             .into_iter()
             .map(|key| ReportMetric {
                 key: key.to_string(),
@@ -7523,6 +7523,7 @@ fn facebook_insight_type(name: &str) -> Option<i64> {
     match name.trim() {
         "page_post_engagements" => Some(2),
         "page_posts_impressions" => Some(3),
+        "page_media_view" => Some(4),
         _ => None,
     }
 }
@@ -9621,7 +9622,7 @@ mod tests {
                         "values": [{"value": 11, "end_time": "2026-06-24T00:00:00+0000"}]
                     }),
                     serde_json::json!({
-                        "name": "page_posts_impressions",
+                        "name": "page_media_view",
                         "values": [{"value": 220, "end_time": "2026-06-24T00:00:00+0000"}]
                     }),
                 ],
@@ -9697,8 +9698,8 @@ mod tests {
             facebook_report
                 .metrics
                 .iter()
-                .find(|metric| metric.key == "page_posts_impressions")
-                .expect("impression metric should exist")
+                .find(|metric| metric.key == "page_media_view")
+                .expect("media view metric should exist")
                 .value,
             220
         );
@@ -11017,7 +11018,7 @@ mod tests {
                 "INSERT INTO facebook_insights (account_id, type, value, date, created_at, updated_at)
                  VALUES
                     (1, 2, 20, '2026-06-22', '2026-06-22T00:00:00Z', '2026-06-22T00:00:00Z'),
-                    (1, 3, 500, '2026-06-22', '2026-06-22T00:00:00Z', '2026-06-22T00:00:00Z');",
+                    (1, 4, 500, '2026-06-22', '2026-06-22T00:00:00Z', '2026-06-22T00:00:00Z');",
             )
             .expect("fixtures should insert");
 
@@ -11033,7 +11034,7 @@ mod tests {
         assert_eq!(report.provider, "facebook_page");
         assert_eq!(report.metrics[0].key, "page_post_engagements");
         assert_eq!(report.metrics[0].value, 20);
-        assert_eq!(report.metrics[1].key, "page_posts_impressions");
+        assert_eq!(report.metrics[1].key, "page_media_view");
         assert_eq!(report.metrics[1].value, 500);
 
         fs::remove_file(path).expect("temporary database should be removed");
@@ -11153,7 +11154,7 @@ mod tests {
                     ]
                 }),
                 serde_json::json!({
-                    "name": "page_posts_impressions",
+                    "name": "page_media_view",
                     "values": [
                         { "value": 70, "end_time": "2026-06-22T07:00:00+0000" }
                     ]

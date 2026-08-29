@@ -216,6 +216,10 @@ fn facebook_api_version(database: &Database) -> Result<Option<String>, String> {
     service_configuration_value(database, "facebook", "api_version")
 }
 
+fn facebook_login_configuration_id(database: &Database) -> Result<Option<String>, String> {
+    service_configuration_value(database, "facebook", "login_configuration_id")
+}
+
 #[tauri::command]
 pub fn system_health(database: State<'_, Database>) -> Result<SystemHealthSummary, String> {
     let counts = database
@@ -917,6 +921,7 @@ pub fn start_facebook_oauth(
     mut request: FacebookOAuthStartForm,
 ) -> Result<FacebookOAuthStartSummary, String> {
     request.api_version = facebook_api_version(&database)?;
+    request.configuration_id = facebook_login_configuration_id(&database)?;
 
     start_facebook_oauth_provider(&request).map_err(|error| error.to_string())
 }

@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 const DEFAULT_FACEBOOK_REDIRECT_URI: &str = "http://localhost/callback";
 const DEFAULT_FACEBOOK_API_VERSION: &str = "v25.0";
+const FACEBOOK_PAGE_INSIGHT_METRICS: &[&str] = &["page_post_engagements", "page_media_view"];
 const DEFAULT_FACEBOOK_SCOPES: &[&str] = &[
     "business_management",
     "pages_show_list",
@@ -694,10 +695,11 @@ pub fn fetch_facebook_page_insights(
         .date_naive()
         .to_string();
     let until = Utc::now().date_naive().to_string();
+    let metrics = FACEBOOK_PAGE_INSIGHT_METRICS.join(",");
     let response = client
         .get(endpoint)
         .query(&[
-            ("metric", "page_post_engagements,page_posts_impressions"),
+            ("metric", metrics.as_str()),
             ("period", "day"),
             ("since", since.as_str()),
             ("until", until.as_str()),
@@ -894,19 +896,34 @@ fn facebook_authorization_summary(
     }
 
     let redirect_uri = normalized_facebook_redirect_uri(form.redirect_uri.as_deref());
-    let scopes = normalized_facebook_scopes(&form.scopes);
+    let configuration_id = form
+        .configuration_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let scopes = configuration_id
+        .map(|_| Vec::new())
+        .unwrap_or_else(|| normalized_facebook_scopes(&form.scopes));
     let state = Uuid::new_v4().to_string();
     let mut url = Url::parse(&format!(
         "https://www.facebook.com/{api_version}/dialog/oauth"
     ))
     .map_err(|error| FacebookError::Validation(format!("invalid Facebook OAuth URL: {error}")))?;
 
-    url.query_pairs_mut()
+    let mut query = url.query_pairs_mut();
+    query
         .append_pair("client_id", client_id)
         .append_pair("redirect_uri", &redirect_uri)
-        .append_pair("scope", &scopes.join(","))
         .append_pair("response_type", "code")
         .append_pair("state", &state);
+
+    if let Some(configuration_id) = configuration_id {
+        query.append_pair("config_id", configuration_id);
+    } else {
+        query.append_pair("scope", &scopes.join(","));
+    }
+
+    drop(query);
 
     Ok(FacebookOAuthStartSummary {
         auth_url: url.to_string(),
@@ -1629,6 +1646,7 @@ mod tests {
             &FacebookOAuthStartForm {
                 redirect_uri: Some(" http://localhost/callback ".to_string()),
                 scopes: Vec::new(),
+                configuration_id: None,
                 api_version: None,
             },
         )
@@ -1648,6 +1666,34 @@ mod tests {
         assert!(summary.auth_url.contains("response_type=code"));
         assert!(summary.auth_url.contains("pages_manage_posts"));
         assert_eq!(summary.api_version, "v25.0");
+    }
+
+    #[test]
+    fn builds_facebook_login_for_business_authorization_url() {
+        let summary = facebook_authorization_summary(
+            "app-id",
+            &FacebookOAuthStartForm {
+                redirect_uri: Some("http://localhost/callback".to_string()),
+                scopes: DEFAULT_FACEBOOK_SCOPES
+                    .iter()
+                    .map(|scope| (*scope).to_string())
+                    .collect(),
+                configuration_id: Some("1234567890123456".to_string()),
+                api_version: None,
+            },
+        )
+        .expect("summary should build");
+
+        assert!(summary.auth_url.contains("config_id=1234567890123456"));
+        assert!(!summary.auth_url.contains("scope="));
+        assert!(summary.scopes.is_empty());
+    }
+
+    #[test]
+    fn uses_current_facebook_page_insight_metrics() {
+        assert!(FACEBOOK_PAGE_INSIGHT_METRICS.contains(&"page_post_engagements"));
+        assert!(FACEBOOK_PAGE_INSIGHT_METRICS.contains(&"page_media_view"));
+        assert!(!FACEBOOK_PAGE_INSIGHT_METRICS.contains(&"page_posts_impressions"));
     }
 
     #[test]

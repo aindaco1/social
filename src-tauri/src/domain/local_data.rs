@@ -260,6 +260,8 @@ pub struct FacebookOAuthStartForm {
     #[serde(default)]
     pub scopes: Vec<String>,
     #[serde(default)]
+    pub configuration_id: Option<String>,
+    #[serde(default)]
     pub api_version: Option<String>,
 }
 
@@ -1572,8 +1574,8 @@ impl AudienceForm {
 
 impl FacebookInsightForm {
     pub fn validated(&self) -> Result<ValidatedFacebookInsight, String> {
-        if !matches!(self.insight_type, 1 | 2 | 3) {
-            return Err("insight_type must be 1, 2, or 3".to_string());
+        if !matches!(self.insight_type, 1 | 2 | 3 | 4) {
+            return Err("insight_type must be 1, 2, 3, or 4".to_string());
         }
 
         if self.value < 0 {

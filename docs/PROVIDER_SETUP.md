@@ -33,13 +33,19 @@ Create or select the Meta app at <https://developers.facebook.com/apps>. Dust Wa
 Exact desktop values:
 
 - OAuth callback URL: `http://localhost/callback`
+- Login model: `Facebook Login for Business · user access token configuration`
+- Connection + import permissions: `pages_show_list,pages_read_engagement,read_insights`
+- Dust Wave configuration field: **Login configuration ID**
 - Default API version: `v25.0`
-- Default OAuth scopes: `business_management,pages_show_list,read_insights,pages_manage_posts,pages_read_engagement,pages_manage_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights,instagram_manage_comments`
 - Dust Wave credential fields: **App ID** and **App Secret**
 
-Use the minimum provider use cases and permissions that match the flow being tested. A personal Facebook profile is the OAuth identity, but Dust Wave Social connects Facebook Pages and Instagram Business or Creator accounts returned through that identity; it does not publish to a personal Facebook timeline. Keep the app in the provider's limited test/development state when the test identity and assets are eligible. Recheck the live Meta console before changing review or publication state because provider requirements change.
+In Meta App Dashboard, add the Pages API use case and add `pages_show_list`, `pages_read_engagement`, and `read_insights` under **Manage everything on your Page > Permissions and features**. Under **Facebook Login for Business > Configurations**, create one configuration with a clear client name, choose **General**, choose **User access token**, and select those same three permissions. Copy its non-secret Configuration ID into Provider setup. Dust Wave uses `config_id` rather than sending a second raw OAuth scope list, so the portal configuration remains the permission authority. Add the Instagram Business use case only when connecting a professional Instagram account, and add `pages_manage_posts` only before a deliberate Facebook publishing test.
 
-After saving the Meta credentials, select **Connect Facebook or Instagram**, authorize the controlled identity, choose only the intended Page or professional Instagram account, and run Refresh before testing a post or insights import.
+A personal Facebook profile is the OAuth identity, but Dust Wave Social connects Facebook Pages and Instagram Business or Creator accounts returned through that identity; it does not publish to a personal Facebook timeline. Standard access is enough only for people with an app role. Keep the app unpublished while testing controlled identities, and request Advanced Access before onboarding people without an app role. Recheck the live Meta console before changing review or publication state because provider requirements change.
+
+After saving the Meta credentials, select **Connect Facebook or Instagram**. Dust Wave switches directly to the matching account form. Authorize the controlled identity, choose **current Pages only**, select only the intended Page or professional Instagram account, and run Refresh before testing an insights import or post.
+
+Facebook imports `page_post_engagements` and `page_media_view`. Do not restore `page_posts_impressions`: Meta deprecated it for every Graph API version, and the provider now returns an invalid-metric error when it is requested. See Meta's [deprecated Facebook Page Insights metrics](https://developers.facebook.com/docs/platforminsights/page/deprecated-metrics).
 
 ## Instagram Local Media
 
@@ -97,7 +103,7 @@ Add **Login Kit**, then request only the MVP analytics scopes used by the curren
 
 The **Client Secret** goes only into the Cloudflare broker secret named `TIKTOK_CLIENT_SECRET`. The same **Client Key** is saved as broker secret `TIKTOK_CLIENT_KEY` and in Dust Wave Social. Never store the Client Secret in the desktop app.
 
-The Social-specific policy pages are public, linked from the Dust Wave site footer, and intentionally use stable extensionless URLs. Keep those provider-facing URLs synchronized with the deployed pages instead of substituting temporary documents or repository links.
+The Social-specific policy pages are public and intentionally use stable extensionless URLs. They do not need permanent links in the global Dust Wave footer; keep the provider-facing URLs synchronized with the deployed pages instead of substituting temporary documents or repository links.
 
 Before clicking **Submit for review**, confirm all of the following:
 
