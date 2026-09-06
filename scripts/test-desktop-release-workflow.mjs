@@ -47,5 +47,10 @@ assert.deepEqual(
 );
 assert.equal(cachedPaths.some((cachedPath) => cachedPath.includes('/bundle')), false);
 assert.equal(cachedPaths.some((cachedPath) => cachedPath.endsWith('/dust-wave-social')), false);
+assert.match(releaseBundle, /npm run local-ai:native:offline -- --app/);
+assert.ok(releaseBundle.indexOf('Smoke packaged launch and native offline inference') < releaseBundle.indexOf('Publish GitHub release'));
+assert.match(releaseBundle, /node scripts\/release-notes\.mjs/);
+assert.equal((releaseBundle.match(/--notes-file/g) || []).length, 2);
+assert.doesNotMatch(releaseBundle, /--generate-notes/);
 
 console.log('Desktop release workflow reuse tests passed.');

@@ -10,6 +10,8 @@ import {
     Tooltip,
 } from 'chart.js';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { appearance } from '../appearance.js';
+import { observedNumber, formatObservation } from '../reporting.js';
 
 Chart.register(CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip, Filler);
 
@@ -28,54 +30,65 @@ const emit = defineEmits(['select']);
 
 const canvas = ref(null);
 let chart = null;
+const { resolvedTheme } = appearance;
 
-const isActivePoint = (index) => Number(props.activeIndex) === index;
+const chartColors = () => {
+    const styles = getComputedStyle(document.documentElement);
+    const token = (name) => styles.getPropertyValue(`--dw-${name}`).trim();
+    return {
+        line: token('chart-line'),
+        fill: token('chart-fill'),
+        ink: token('ink'),
+        muted: token('ink-muted'),
+        grid: token('border-soft'),
+        surface: token('surface-base'),
+    };
+};
+
+const isActivePoint = (index) => props.activeIndex !== null && Number(props.activeIndex) === index;
 
 const formatNumber = (value) => {
-    const number = Number(value) || 0;
-
-    return new Intl.NumberFormat().format(number);
+    return formatObservation(value);
 };
 
 const selectPoint = (index) => {
     emit('select', index);
 };
 
-const chartData = () => ({
-    labels: props.points.map((point) => point.label),
-    datasets: [
-        {
-            label: 'Followers',
-            type: 'line',
-            data: props.points.map((point) => Number(point.value) || 0),
-            borderColor: '#3f3795',
-            pointBackgroundColor: '#4f46bb',
-            pointBorderColor: '#4f46bb',
-            backgroundColor: 'rgba(79, 70, 187, 0.09)',
-            borderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 5,
-            tension: 0.28,
-            fill: true,
-        },
-    ],
-});
+const chartData = () => {
+    const colors = chartColors();
+    return {
+        labels: props.points.map((point) => point.label),
+        datasets: [
+            {
+                label: 'Followers',
+                type: 'line',
+                data: props.points.map((point) => observedNumber(point.value)),
+                spanGaps: false,
+                borderColor: colors.line,
+                pointBackgroundColor: colors.line,
+                pointBorderColor: colors.line,
+                backgroundColor: colors.fill,
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 5,
+                tension: 0.28,
+                fill: true,
+            },
+        ],
+    };
+};
 
 const updateActiveElements = () => {
     if (!chart) {
         return;
     }
 
-    if (props.activeIndex === null || props.activeIndex === undefined) {
+    const index = props.activeIndex === null ? -1 : Number(props.activeIndex);
+    if (!Number.isInteger(index) || !props.points[index] || observedNumber(props.points[index].value) === null) {
         chart.setActiveElements([]);
         chart.tooltip?.setActiveElements([], { x: 0, y: 0 });
         chart.update();
-        return;
-    }
-
-    const index = Number(props.activeIndex);
-
-    if (!Number.isFinite(index) || !props.points[index]) {
         return;
     }
 
@@ -92,12 +105,14 @@ const createChart = () => {
         return;
     }
 
+    const colors = chartColors();
     chart = new Chart(canvas.value, {
         type: 'line',
         data: chartData(),
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             interaction: {
                 mode: 'index',
                 intersect: false,
@@ -107,6 +122,11 @@ const createChart = () => {
                     display: false,
                 },
                 tooltip: {
+                    backgroundColor: colors.surface,
+                    titleColor: colors.ink,
+                    bodyColor: colors.ink,
+                    borderColor: colors.grid,
+                    borderWidth: 1,
                     callbacks: {
                         label: (context) => `Followers: ${context.formattedValue}`,
                     },
@@ -118,7 +138,7 @@ const createChart = () => {
                         display: false,
                     },
                     ticks: {
-                        color: '#64748b',
+                        color: colors.muted,
                         maxRotation: 0,
                         autoSkip: true,
                         maxTicksLimit: 8,
@@ -127,10 +147,10 @@ const createChart = () => {
                 y: {
                     beginAtZero: true,
                     grid: {
-                        color: '#edf0f3',
+                        color: colors.grid,
                     },
                     ticks: {
-                        color: '#64748b',
+                        color: colors.muted,
                         precision: 0,
                     },
                 },
@@ -171,6 +191,22 @@ watch(
     () => props.activeIndex,
     updateActiveElements,
 );
+
+watch(resolvedTheme, () => {
+    if (!chart) return;
+    const colors = chartColors();
+    chart.data = chartData();
+    chart.options.scales.x.ticks.color = colors.muted;
+    chart.options.scales.y.ticks.color = colors.muted;
+    chart.options.scales.y.grid.color = colors.grid;
+    Object.assign(chart.options.plugins.tooltip, {
+        backgroundColor: colors.surface,
+        titleColor: colors.ink,
+        bodyColor: colors.ink,
+        borderColor: colors.grid,
+    });
+    chart.update('none');
+});
 
 onBeforeUnmount(() => {
     chart?.destroy();

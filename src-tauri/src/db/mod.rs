@@ -42,7 +42,7 @@ use crate::twitter::{
     fetch_twitter_user_posts, publish_twitter_post, upload_twitter_media, verify_twitter_account,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use image::{GenericImageView, ImageFormat, imageops::FilterType};
 use reqwest::{Url, blocking::Client, header::CONTENT_TYPE, redirect::Policy};
 use rusqlite::types::Value as SqlValue;
@@ -54,6 +54,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Manager};
@@ -105,6 +106,23 @@ const SCHEMA_MIGRATIONS: &[SchemaMigration] = &[
     },
 ];
 const MAX_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
+// A 2048px RGBA derivative can exceed the import/provider upload limit even
+// though it is a valid bounded local artifact. Do not change upload limits.
+const MAX_LOCAL_AI_PNG_BYTES: usize = 20 * 1024 * 1024;
+
+struct LocalDerivativeFiles {
+    paths: Vec<PathBuf>,
+    committed: bool,
+}
+impl Drop for LocalDerivativeFiles {
+    fn drop(&mut self) {
+        if !self.committed {
+            for path in &self.paths {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+}
 const MAX_GIF_BYTES: u64 = 15 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 200 * 1024 * 1024;
 const SYSTEM_LOG_NAME: &str = "dust-wave-system.log";
@@ -834,12 +852,17 @@ impl Database {
 
     pub fn account_report(&self, request: &ReportRequest) -> Result<ReportSnapshot, DbError> {
         let request = request.validated().map_err(DbError::Validation)?;
+        let zone = self
+            .settings()?
+            .timezone
+            .parse::<chrono_tz::Tz>()
+            .map_err(|_| DbError::Validation("Choose a supported timezone in Settings.".into()))?;
 
         self.account_report_for_end_date(
             request.account_id,
             &request.period,
             request.days,
-            Utc::now().date_naive(),
+            Utc::now().with_timezone(&zone).date_naive(),
         )
     }
 
@@ -2475,21 +2498,24 @@ impl Database {
                 DbError::Validation(format!("source image dimensions unavailable: {error}"))
             })?;
         let source_sha256 = sha256_file(&source_path)?;
+        if form.input_width != source_width
+            || form.input_height != source_height
+            || form.original_width != source_width
+            || form.original_height != source_height
+            || source_width > 512
+            || source_height > 512
+        {
+            return Err(DbError::Validation(
+                "4x AI upscaling requires the unchanged source dimensions, up to 512 x 512px"
+                    .to_string(),
+            ));
+        }
         let png_bytes = decode_local_ai_png_data_url(&form.image_data_url)?;
-        validate_media_upload(
-            "image/png",
-            u64::try_from(png_bytes.len()).map_err(|_| {
-                DbError::Validation("model derivative is too large to track".to_string())
-            })?,
-        )?;
-
-        let output =
-            image::load_from_memory_with_format(&png_bytes, ImageFormat::Png).map_err(|error| {
-                DbError::Validation(format!(
-                    "model derivative PNG could not be decoded: {error}"
-                ))
-            })?;
-        let (output_width, output_height) = output.dimensions();
+        // Check header dimensions before decoding pixel memory.
+        let (output_width, output_height) =
+            image::ImageReader::with_format(std::io::Cursor::new(&png_bytes), ImageFormat::Png)
+                .into_dimensions()
+                .map_err(|_| DbError::Validation("Invalid Local AI PNG dimensions".into()))?;
         let expected_width = form
             .input_width
             .saturating_mul(u32::from(form.scale_factor));
@@ -2502,6 +2528,9 @@ impl Database {
                 "model derivative dimensions must be {expected_width}x{expected_height}, got {output_width}x{output_height}"
             )));
         }
+        image::load_from_memory_with_format(&png_bytes, ImageFormat::Png).map_err(|_| {
+            DbError::Validation("Local AI derivative PNG could not be decoded".into())
+        })?;
 
         let output_sha256 = sha256_hex(&png_bytes);
         let derivative_uuid = Uuid::new_v4().to_string();
@@ -2510,17 +2539,38 @@ impl Database {
         let destination_path = media_directory.join(&filename);
         let relative_path = format!("media/{filename}");
         fs::create_dir_all(&media_directory)?;
-        fs::write(&destination_path, png_bytes)?;
+        let mut destination = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&destination_path)?;
+        let mut partial_files = LocalDerivativeFiles {
+            paths: vec![
+                destination_path.clone(),
+                media_directory.join(media_storage_filename_from_extension(
+                    &format!("{derivative_uuid}-thumb"),
+                    Some("png"),
+                )),
+            ],
+            committed: false,
+        };
+        destination.write_all(&png_bytes)?;
+        destination.sync_all()?;
+        drop(destination);
         let size = i64::try_from(fs::metadata(&destination_path)?.len()).map_err(|_| {
             DbError::Validation("model derivative media is too large to track".to_string())
         })?;
         let now = Utc::now().to_rfc3339();
         let derivative_name = format!("{} AI model upscale x{}", source.name, form.scale_factor);
+        let runtime = if form.accelerator == "native_cpu" {
+            "litert_native_2.1.6"
+        } else {
+            "litert_js_model_mvp"
+        };
         let metadata = serde_json::json!({
             "ai_media": {
                 "derivative": true,
                 "operation": "model_upscale",
-                "runtime": "litert_js_model_mvp",
+                "runtime": runtime,
                 "model": {
                     "id": local_ai_metadata_string(&form.model_id, "unknown", 160),
                     "name": local_ai_metadata_string(&form.model_name, "Unknown model", 160),
@@ -2596,13 +2646,14 @@ impl Database {
         )?;
         transaction.commit()?;
 
+        partial_files.committed = true;
         let derivative = self.media_by_uuid(&connection, &derivative_uuid)?;
 
         Ok(LocalAiMediaDerivativeSummary {
             source,
             derivative,
             operation: "model_upscale".to_string(),
-            runtime: "litert_js_model_mvp".to_string(),
+            runtime: runtime.to_string(),
             metadata,
         })
     }
@@ -5118,6 +5169,16 @@ impl Database {
                 &start,
                 &end,
             )?,
+            latest_observation_date: connection.query_row(
+                "SELECT MAX(date) FROM (
+                    SELECT date FROM audience WHERE account_id = ?1
+                    UNION ALL SELECT date FROM metrics WHERE account_id = ?1
+                        AND EXISTS (SELECT 1 FROM json_each(metrics.data_json) WHERE type IN ('integer', 'real'))
+                    UNION ALL SELECT date FROM facebook_insights WHERE account_id = ?1
+                )",
+                params![account_id],
+                |row| row.get(0),
+            )?,
         })
     }
 
@@ -5171,10 +5232,7 @@ impl Database {
         end: &str,
         keys: &[&str],
     ) -> Result<Vec<ReportMetric>, DbError> {
-        let mut sums = keys
-            .iter()
-            .map(|key| ((*key).to_string(), 0_i64))
-            .collect::<BTreeMap<_, _>>();
+        let mut sums = BTreeMap::<String, i64>::new();
         let mut statement = connection.prepare(
             "SELECT data_json
              FROM metrics
@@ -5190,18 +5248,18 @@ impl Database {
 
             for key in keys {
                 if let Some(total) = value.get(*key).and_then(json_number_to_i64) {
-                    if let Some(sum) = sums.get_mut(*key) {
-                        *sum += total;
-                    }
+                    *sums.entry((*key).to_string()).or_default() += total;
                 }
             }
         }
 
         Ok(keys
             .iter()
-            .map(|key| ReportMetric {
-                key: (*key).to_string(),
-                value: *sums.get(*key).unwrap_or(&0),
+            .filter_map(|key| {
+                sums.get(*key).map(|value| ReportMetric {
+                    key: (*key).to_string(),
+                    value: *value,
+                })
             })
             .collect())
     }
@@ -5213,10 +5271,7 @@ impl Database {
         start: &str,
         end: &str,
     ) -> Result<Vec<ReportMetric>, DbError> {
-        let mut sums = BTreeMap::from([
-            ("page_post_engagements".to_string(), 0_i64),
-            ("page_media_view".to_string(), 0_i64),
-        ]);
+        let mut sums = BTreeMap::<String, i64>::new();
         let mut statement = connection.prepare(
             "SELECT type, SUM(value)
              FROM facebook_insights
@@ -5241,9 +5296,11 @@ impl Database {
 
         Ok(["page_post_engagements", "page_media_view"]
             .into_iter()
-            .map(|key| ReportMetric {
-                key: key.to_string(),
-                value: *sums.get(key).unwrap_or(&0),
+            .filter_map(|key| {
+                sums.get(key).map(|value| ReportMetric {
+                    key: key.to_string(),
+                    value: *value,
+                })
             })
             .collect())
     }
@@ -5607,47 +5664,15 @@ impl Database {
             return Ok(None);
         };
 
-        let selected = NaiveDate::parse_from_str(selected_date, "%Y-%m-%d")
-            .map_err(|_| DbError::Validation("date must use YYYY-MM-DD format".to_string()))?;
-        let (start, end) = match calendar_type.as_str() {
-            "month" => {
-                let start = selected
-                    .with_day(1)
-                    .expect("day 1 is valid for every month")
-                    - Duration::days(10);
-                let next_month = if selected.month() == 12 {
-                    NaiveDate::from_ymd_opt(selected.year() + 1, 1, 1)
-                } else {
-                    NaiveDate::from_ymd_opt(selected.year(), selected.month() + 1, 1)
-                }
-                .expect("next month should be valid");
-                let end = next_month - Duration::days(1) + Duration::days(10);
-
-                (start, end)
-            }
-            "week" => {
-                let week_starts_on = self
-                    .setting_value::<u8>(connection, "week_starts_on")?
-                    .unwrap_or(AppSettings::default().week_starts_on);
-                let offset = if week_starts_on == 0 {
-                    selected.weekday().num_days_from_sunday()
-                } else {
-                    selected.weekday().num_days_from_monday()
-                };
-                let start = selected - Duration::days(i64::from(offset));
-
-                (start, start + Duration::days(6))
-            }
-            "day" => (selected, selected),
-            _ => return Err(DbError::Validation("unsupported calendar_type".to_string())),
-        };
-
-        Ok(Some(PostCalendarWindow {
-            calendar_type: calendar_type.clone(),
-            selected_date: selected.to_string(),
-            start_date: start.to_string(),
-            end_date: end.to_string(),
-        }))
+        let week_start = self
+            .setting_value::<u8>(connection, "week_starts_on")?
+            .unwrap_or(AppSettings::default().week_starts_on);
+        let zone = self
+            .setting_value::<String>(connection, "timezone")?
+            .unwrap_or(AppSettings::default().timezone);
+        crate::domain::calendar::calendar_window(selected_date, calendar_type, week_start, &zone)
+            .map(Some)
+            .map_err(DbError::Validation)
     }
 
     fn post_query_filter(
@@ -5712,13 +5737,12 @@ impl Database {
 
         if let Some(window) = calendar_window {
             clauses.push(
-                "p.scheduled_at IS NOT NULL
-                 AND substr(p.scheduled_at, 1, 10) >= ?
-                 AND substr(p.scheduled_at, 1, 10) <= ?"
+                "julianday(COALESCE(p.scheduled_at, p.published_at, p.updated_at)) >= julianday(?)
+                 AND julianday(COALESCE(p.scheduled_at, p.published_at, p.updated_at)) < julianday(?)"
                     .to_string(),
             );
-            values.push(SqlValue::Text(window.start_date.clone()));
-            values.push(SqlValue::Text(window.end_date.clone()));
+            values.push(SqlValue::Text(window.start_at.clone()));
+            values.push(SqlValue::Text(window.end_at_exclusive.clone()));
         }
 
         Ok((clauses.join(" AND "), values))
@@ -6995,13 +7019,13 @@ fn import_twitter_post_rows(
         })
         .to_string();
         let metrics_json = serde_json::json!({
-            "user_profile_clicks": public_metrics.get("user_profile_clicks").and_then(json_number_to_i64).unwrap_or(0),
-            "impressions": public_metrics.get("impression_count").and_then(json_number_to_i64).unwrap_or(0),
-            "likes": public_metrics.get("like_count").and_then(json_number_to_i64).unwrap_or(0),
-            "replies": public_metrics.get("reply_count").and_then(json_number_to_i64).unwrap_or(0),
-            "retweets": public_metrics.get("retweet_count").and_then(json_number_to_i64).unwrap_or(0),
-            "quotes": public_metrics.get("quote_count").and_then(json_number_to_i64).unwrap_or(0),
-            "bookmarks": public_metrics.get("bookmark_count").and_then(json_number_to_i64).unwrap_or(0),
+            "user_profile_clicks": public_metrics.get("user_profile_clicks").and_then(json_number_to_i64),
+            "impressions": public_metrics.get("impression_count").and_then(json_number_to_i64),
+            "likes": public_metrics.get("like_count").and_then(json_number_to_i64),
+            "replies": public_metrics.get("reply_count").and_then(json_number_to_i64),
+            "retweets": public_metrics.get("retweet_count").and_then(json_number_to_i64),
+            "quotes": public_metrics.get("quote_count").and_then(json_number_to_i64),
+            "bookmarks": public_metrics.get("bookmark_count").and_then(json_number_to_i64),
         })
         .to_string();
 
@@ -7027,57 +7051,47 @@ fn import_twitter_post_rows(
     Ok(imported)
 }
 
+// All providers share the same observed-only daily aggregation. Missing scoped fields
+// remain absent; numeric zero is a real observation, not an empty-data fallback.
+fn process_observed_metric_days(
+    transaction: &Transaction<'_>,
+    account_id: i64,
+    keys: &[&str],
+) -> Result<usize, DbError> {
+    let mut statement = transaction
+        .prepare("SELECT created_at, metrics_json FROM imported_posts WHERE account_id = ?1")?;
+    let rows = statement.query_map(params![account_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut days = BTreeMap::<String, BTreeMap<&str, i64>>::new();
+    for (date, metrics) in collect_rows(rows)? {
+        let value: serde_json::Value = serde_json::from_str(&metrics)?;
+        let entry = days.entry(date).or_default();
+        for key in keys {
+            if let Some(number) = value.get(key).and_then(json_number_to_i64) {
+                *entry.entry(key).or_default() += number;
+            }
+        }
+    }
+    for (date, observations) in &days {
+        transaction.execute(
+            "INSERT INTO metrics (account_id, data_json, date) VALUES (?1, ?2, ?3)
+             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
+            params![account_id, serde_json::to_string(observations)?, date],
+        )?;
+    }
+    Ok(days.len())
+}
+
 fn process_twitter_metric_days(
     transaction: &Transaction<'_>,
     account_id: i64,
 ) -> Result<usize, DbError> {
-    let mut statement = transaction.prepare(
-        "SELECT created_at, metrics_json
-         FROM imported_posts
-         WHERE account_id = ?1",
-    )?;
-    let rows = statement.query_map(params![account_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    let mut days = BTreeMap::<String, (i64, i64, i64, i64)>::new();
-
-    for (date, metrics_json) in collect_rows(rows)? {
-        let value = serde_json::from_str::<serde_json::Value>(&metrics_json)?;
-        let entry = days.entry(date).or_insert((0, 0, 0, 0));
-
-        entry.0 += value.get("likes").and_then(json_number_to_i64).unwrap_or(0);
-        entry.1 += value
-            .get("replies")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-        entry.2 += value
-            .get("retweets")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-        entry.3 += value
-            .get("impressions")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-    }
-
-    for (date, (likes, replies, retweets, impressions)) in &days {
-        let data_json = serde_json::json!({
-            "likes": likes,
-            "replies": replies,
-            "retweets": retweets,
-            "impressions": impressions,
-        })
-        .to_string();
-
-        transaction.execute(
-            "INSERT INTO metrics (account_id, data_json, date)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
-            params![account_id, data_json, date],
-        )?;
-    }
-
-    Ok(days.len())
+    process_observed_metric_days(
+        transaction,
+        account_id,
+        &["likes", "replies", "retweets", "impressions"],
+    )
 }
 
 fn import_instagram_media_rows(
@@ -7108,8 +7122,8 @@ fn import_instagram_media_rows(
         })
         .to_string();
         let metrics_json = serde_json::json!({
-            "likes": item.get("like_count").and_then(json_number_to_i64).unwrap_or(0),
-            "comments": item.get("comments_count").and_then(json_number_to_i64).unwrap_or(0),
+            "likes": item.get("like_count").and_then(json_number_to_i64),
+            "comments": item.get("comments_count").and_then(json_number_to_i64),
             "media": 1,
         })
         .to_string();
@@ -7140,45 +7154,7 @@ fn process_instagram_metric_days(
     transaction: &Transaction<'_>,
     account_id: i64,
 ) -> Result<usize, DbError> {
-    let mut statement = transaction.prepare(
-        "SELECT created_at, metrics_json
-         FROM imported_posts
-         WHERE account_id = ?1",
-    )?;
-    let rows = statement.query_map(params![account_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    let mut days = BTreeMap::<String, (i64, i64, i64)>::new();
-
-    for (date, metrics_json) in collect_rows(rows)? {
-        let value = serde_json::from_str::<serde_json::Value>(&metrics_json)?;
-        let entry = days.entry(date).or_insert((0, 0, 0));
-
-        entry.0 += value.get("likes").and_then(json_number_to_i64).unwrap_or(0);
-        entry.1 += value
-            .get("comments")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-        entry.2 += value.get("media").and_then(json_number_to_i64).unwrap_or(0);
-    }
-
-    for (date, (likes, comments, media_count)) in &days {
-        let data_json = serde_json::json!({
-            "likes": likes,
-            "comments": comments,
-            "media": media_count,
-        })
-        .to_string();
-
-        transaction.execute(
-            "INSERT INTO metrics (account_id, data_json, date)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
-            params![account_id, data_json, date],
-        )?;
-    }
-
-    Ok(days.len())
+    process_observed_metric_days(transaction, account_id, &["likes", "comments", "media"])
 }
 
 fn import_facebook_insight_rows(
@@ -7204,7 +7180,9 @@ fn import_facebook_insight_rows(
             let Some(date) = facebook_insight_date(item) else {
                 continue;
             };
-            let value = item.get("value").and_then(json_number_to_i64).unwrap_or(0);
+            let Some(value) = item.get("value").and_then(json_number_to_i64) else {
+                continue;
+            };
 
             transaction.execute(
                 "INSERT INTO facebook_insights (account_id, type, value, date, created_at, updated_at)
@@ -7240,9 +7218,9 @@ fn import_mastodon_status_rows(
         })
         .to_string();
         let metrics_json = serde_json::json!({
-            "replies": status.get("replies_count").and_then(json_number_to_i64).unwrap_or(0),
-            "reblogs": status.get("reblogs_count").and_then(json_number_to_i64).unwrap_or(0),
-            "favourites": status.get("favourites_count").and_then(json_number_to_i64).unwrap_or(0),
+            "replies": status.get("replies_count").and_then(json_number_to_i64),
+            "reblogs": status.get("reblogs_count").and_then(json_number_to_i64),
+            "favourites": status.get("favourites_count").and_then(json_number_to_i64),
         })
         .to_string();
 
@@ -7299,10 +7277,10 @@ fn import_tiktok_video_rows(
         })
         .to_string();
         let metrics_json = serde_json::json!({
-            "views": video.get("view_count").and_then(json_number_to_i64).unwrap_or(0),
-            "likes": video.get("like_count").and_then(json_number_to_i64).unwrap_or(0),
-            "comments": video.get("comment_count").and_then(json_number_to_i64).unwrap_or(0),
-            "shares": video.get("share_count").and_then(json_number_to_i64).unwrap_or(0),
+            "views": video.get("view_count").and_then(json_number_to_i64),
+            "likes": video.get("like_count").and_then(json_number_to_i64),
+            "comments": video.get("comment_count").and_then(json_number_to_i64),
+            "shares": video.get("share_count").and_then(json_number_to_i64),
         })
         .to_string();
 
@@ -7332,101 +7310,22 @@ fn process_mastodon_metric_days(
     transaction: &Transaction<'_>,
     account_id: i64,
 ) -> Result<usize, DbError> {
-    let mut statement = transaction.prepare(
-        "SELECT created_at, metrics_json
-         FROM imported_posts
-         WHERE account_id = ?1",
-    )?;
-    let rows = statement.query_map(params![account_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    let mut days = BTreeMap::<String, (i64, i64, i64)>::new();
-
-    for (date, metrics_json) in collect_rows(rows)? {
-        let value = serde_json::from_str::<serde_json::Value>(&metrics_json)?;
-        let entry = days.entry(date).or_insert((0, 0, 0));
-
-        entry.0 += value
-            .get("replies")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-        entry.1 += value
-            .get("reblogs")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-        entry.2 += value
-            .get("favourites")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-    }
-
-    for (date, (replies, reblogs, favourites)) in &days {
-        let data_json = serde_json::json!({
-            "replies": replies,
-            "reblogs": reblogs,
-            "favourites": favourites,
-        })
-        .to_string();
-
-        transaction.execute(
-            "INSERT INTO metrics (account_id, data_json, date)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
-            params![account_id, data_json, date],
-        )?;
-    }
-
-    Ok(days.len())
+    process_observed_metric_days(
+        transaction,
+        account_id,
+        &["replies", "reblogs", "favourites"],
+    )
 }
 
 fn process_tiktok_metric_days(
     transaction: &Transaction<'_>,
     account_id: i64,
 ) -> Result<usize, DbError> {
-    let mut statement = transaction.prepare(
-        "SELECT created_at, metrics_json
-         FROM imported_posts
-         WHERE account_id = ?1",
-    )?;
-    let rows = statement.query_map(params![account_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    let mut days = BTreeMap::<String, (i64, i64, i64, i64)>::new();
-
-    for (date, metrics_json) in collect_rows(rows)? {
-        let value = serde_json::from_str::<serde_json::Value>(&metrics_json)?;
-        let entry = days.entry(date).or_insert((0, 0, 0, 0));
-
-        entry.0 += value.get("views").and_then(json_number_to_i64).unwrap_or(0);
-        entry.1 += value.get("likes").and_then(json_number_to_i64).unwrap_or(0);
-        entry.2 += value
-            .get("comments")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-        entry.3 += value
-            .get("shares")
-            .and_then(json_number_to_i64)
-            .unwrap_or(0);
-    }
-
-    for (date, (views, likes, comments, shares)) in &days {
-        let data_json = serde_json::json!({
-            "views": views,
-            "likes": likes,
-            "comments": comments,
-            "shares": shares,
-        })
-        .to_string();
-
-        transaction.execute(
-            "INSERT INTO metrics (account_id, data_json, date)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(account_id, date) DO UPDATE SET data_json = excluded.data_json",
-            params![account_id, data_json, date],
-        )?;
-    }
-
-    Ok(days.len())
+    process_observed_metric_days(
+        transaction,
+        account_id,
+        &["views", "likes", "comments", "shares"],
+    )
 }
 
 fn mastodon_status_date(status: &serde_json::Value) -> Option<String> {
@@ -7733,9 +7632,22 @@ fn decode_local_ai_png_data_url(data_url: &str) -> Result<Vec<u8>, DbError> {
             DbError::Validation("Local AI derivative must be a PNG data URL".to_string())
         })?;
 
-    BASE64_STANDARD.decode(encoded.as_bytes()).map_err(|error| {
-        DbError::Validation(format!("Local AI derivative could not be decoded: {error}"))
-    })
+    if encoded.len() > MAX_LOCAL_AI_PNG_BYTES.div_ceil(3) * 4 {
+        return Err(DbError::Validation(
+            "Local AI derivative exceeds the 20MB local limit".into(),
+        ));
+    }
+    let bytes = BASE64_STANDARD
+        .decode(encoded.as_bytes())
+        .map_err(|error| {
+            DbError::Validation(format!("Local AI derivative could not be decoded: {error}"))
+        })?;
+    if bytes.len() > MAX_LOCAL_AI_PNG_BYTES {
+        return Err(DbError::Validation(
+            "Local AI derivative exceeds the 20MB local limit".into(),
+        ));
+    }
+    Ok(bytes)
 }
 
 fn local_ai_metadata_string(value: &str, fallback: &str, max_chars: usize) -> String {
@@ -8216,7 +8128,7 @@ fn format_system_log_size(bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Cursor, Write as _};
+    use std::io::Cursor;
     use std::net::TcpListener;
     use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -10413,6 +10325,15 @@ mod tests {
         assert_eq!(derivative.source.uuid, imported.uuid);
         assert_eq!(derivative.operation, "model_upscale");
         assert_eq!(derivative.runtime, "litert_js_model_mvp");
+        let mut native_form = model_upscale_form(&imported.uuid);
+        native_form.accelerator = "native_cpu".into();
+        assert_eq!(
+            database
+                .save_local_ai_model_upscale_derivative(&native_form)
+                .unwrap()
+                .runtime,
+            "litert_native_2.1.6"
+        );
         assert_eq!(derivative.derivative.mime_type, "image/png");
         assert_eq!(derivative.derivative.conversion_count, 1);
         assert!(derivative.derivative.size_total > derivative.derivative.size);
@@ -10442,9 +10363,86 @@ mod tests {
                 .as_str()
                 .is_some_and(|value| value.len() == 64)
         );
-        assert_eq!(database.media().expect("media should load").len(), 2);
+        assert_eq!(database.media().expect("media should load").len(), 3);
 
         fs::remove_dir_all(directory).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn local_ai_derivatives_accept_bounded_pngs_above_upload_limit() {
+        let directory = temporary_path("local-ai-large-derivative");
+        fs::create_dir_all(&directory).unwrap();
+        let source_path = directory.join("source.png");
+        image::RgbaImage::from_pixel(512, 512, image::Rgba([50, 60, 70, 255]))
+            .save(&source_path)
+            .unwrap();
+        let database = Database::initialize_at(&directory.join("test.sqlite3")).unwrap();
+        let imported = database
+            .import_media_file(&MediaImportForm {
+                source_path: source_path.display().to_string(),
+                name: None,
+            })
+            .unwrap();
+        let source_hash = sha256_file(&source_path).unwrap();
+        let mut noise = image::RgbaImage::new(2048, 2048);
+        let mut seed = 42u32;
+        for pixel in noise.pixels_mut() {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            *pixel = image::Rgba([seed as u8, (seed >> 8) as u8, (seed >> 16) as u8, 255]);
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        noise.write_to(&mut png, ImageFormat::Png).unwrap();
+        assert!(png.get_ref().len() > MAX_IMAGE_BYTES as usize);
+        assert!(png.get_ref().len() < MAX_LOCAL_AI_PNG_BYTES);
+        let mut form = model_upscale_form(&imported.uuid);
+        form.accelerator = "native_cpu".into();
+        form.input_width = 512;
+        form.input_height = 512;
+        form.original_width = 512;
+        form.original_height = 512;
+        form.image_data_url = format!(
+            "data:image/png;base64,{}",
+            BASE64_STANDARD.encode(png.into_inner())
+        );
+        let result = database
+            .save_local_ai_model_upscale_derivative(&form)
+            .unwrap();
+        assert_eq!(
+            result.metadata["ai_media"]["output_dimensions"]["width"],
+            2048
+        );
+        assert_eq!(sha256_file(&source_path).unwrap(), source_hash);
+        assert!(validate_media_upload("image/png", result.derivative.size as u64).is_err());
+        form.input_width = 511;
+        assert!(
+            database
+                .save_local_ai_model_upscale_derivative(&form)
+                .is_err()
+        );
+        assert_eq!(database.media().unwrap().len(), 2);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn local_ai_partial_files_are_removed_on_failure_but_preserved_after_commit() {
+        let directory = temporary_path("local-ai-partial-files");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("partial.png");
+        fs::write(&path, b"partial").unwrap();
+        drop(LocalDerivativeFiles {
+            paths: vec![path.clone()],
+            committed: false,
+        });
+        assert!(!path.exists());
+        fs::write(&path, b"complete").unwrap();
+        drop(LocalDerivativeFiles {
+            paths: vec![path.clone()],
+            committed: true,
+        });
+        assert!(path.exists());
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -10984,6 +10982,25 @@ mod tests {
         assert_eq!(report.audience.values.len(), 7);
         assert_eq!(report.audience.values[5], Some(1100));
         assert_eq!(report.audience.values[6], None);
+        assert_eq!(
+            report.latest_observation_date.as_deref(),
+            Some("2026-06-22")
+        );
+
+        // An absent metric is not a zero; an explicitly imported zero is still data.
+        connection.execute("DELETE FROM metrics", []).unwrap();
+        connection.execute("INSERT INTO metrics (account_id, data_json, date) VALUES (1, '{\"likes\":0}', '2026-06-22')", []).unwrap();
+        let partial = database
+            .account_report_for_end_date(
+                account.id,
+                "7_days",
+                7,
+                NaiveDate::from_ymd_opt(2026, 6, 23).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(partial.metrics.len(), 1);
+        assert_eq!(partial.metrics[0].key, "likes");
+        assert_eq!(partial.metrics[0].value, 0);
 
         fs::remove_file(path).expect("temporary database should be removed");
     }
@@ -11036,6 +11053,16 @@ mod tests {
         assert_eq!(report.metrics[0].value, 20);
         assert_eq!(report.metrics[1].key, "page_media_view");
         assert_eq!(report.metrics[1].value, 500);
+        assert_eq!(
+            report.latest_observation_date.as_deref(),
+            Some("2026-06-22")
+        );
+        assert!(
+            !report
+                .metrics
+                .iter()
+                .any(|metric| metric.key == "page_impressions")
+        );
 
         fs::remove_file(path).expect("temporary database should be removed");
     }
@@ -11722,6 +11749,86 @@ mod tests {
         );
 
         fs::remove_file(path).expect("temporary database should be removed");
+    }
+
+    #[test]
+    fn provider_imports_preserve_unavailable_metrics_through_daily_aggregation() {
+        let path = std::env::temp_dir().join(format!(
+            "dust-wave-observed-metrics-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let database = Database::initialize_at(&path).unwrap();
+        let account = database
+            .save_account(&AccountForm {
+                name: "Fixture".into(),
+                username: None,
+                provider: "twitter".into(),
+                provider_id: "fixture".into(),
+                authorized: false,
+                avatar_path: None,
+                access_token_secret_ref: "fixture-only".into(),
+                data: None,
+            })
+            .unwrap();
+        let mut connection = database.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let payload = serde_json::json!({ "id": "fixture", "created_at": "2026-06-23T12:00:00Z",
+            "timestamp": "2026-06-23T12:00:00Z", "public_metrics": { "like_count": 0 },
+            "like_count": 0, "replies_count": 0, "view_count": 0 });
+        for provider in ["twitter", "instagram", "mastodon", "tiktok"] {
+            transaction
+                .execute("DELETE FROM imported_posts", [])
+                .unwrap();
+            transaction.execute("DELETE FROM metrics", []).unwrap();
+            let (zero_key, missing_key) = match provider {
+                "twitter" => {
+                    import_twitter_post_rows(&transaction, account.id, &[payload.clone()]).unwrap();
+                    process_twitter_metric_days(&transaction, account.id).unwrap();
+                    ("likes", "impressions")
+                }
+                "instagram" => {
+                    import_instagram_media_rows(&transaction, account.id, &[payload.clone()])
+                        .unwrap();
+                    process_instagram_metric_days(&transaction, account.id).unwrap();
+                    ("likes", "comments")
+                }
+                "mastodon" => {
+                    import_mastodon_status_rows(&transaction, account.id, &[payload.clone()])
+                        .unwrap();
+                    process_mastodon_metric_days(&transaction, account.id).unwrap();
+                    ("replies", "favourites")
+                }
+                _ => {
+                    import_tiktok_video_rows(&transaction, account.id, &[payload.clone()]).unwrap();
+                    process_tiktok_metric_days(&transaction, account.id).unwrap();
+                    ("views", "shares")
+                }
+            };
+            let json: String = transaction
+                .query_row("SELECT data_json FROM metrics", [], |row| row.get(0))
+                .unwrap();
+            let metrics: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                metrics.get(zero_key).and_then(serde_json::Value::as_i64),
+                Some(0),
+                "{provider}"
+            );
+            assert!(metrics.get(missing_key).is_none(), "{provider}");
+        }
+        let rows = import_facebook_insight_rows(
+            &transaction,
+            account.id,
+            &[serde_json::json!({
+                "name": "page_media_view", "values": [
+                    { "value": null, "end_time": "2026-06-23T07:00:00+0000" },
+                    { "value": 0, "end_time": "2026-06-24T07:00:00+0000" }
+                ]
+            })],
+        )
+        .unwrap();
+        assert_eq!(rows, 1);
+        transaction.rollback().unwrap();
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -12969,6 +13076,55 @@ mod tests {
         assert_eq!(result.items[0].preview, "Week post");
 
         fs::remove_file(path).expect("temporary database should be removed");
+    }
+
+    #[test]
+    fn calendar_queries_include_exact_workspace_boundaries_and_last_displayed_day() {
+        let path = std::env::temp_dir().join(format!(
+            "dust-wave-calendar-boundary-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let database = Database::initialize_at(&path).unwrap();
+        let settings = AppSettings {
+            timezone: "America/Denver".into(),
+            ..Default::default()
+        };
+        database.save_settings(&settings).unwrap();
+        for (body, time) in [
+            ("Before first day", "2026-08-31T05:59:59Z"),
+            ("First day", "2026-08-31T06:00:00Z"),
+            ("Last day", "2026-10-12T05:59:59Z"),
+            ("After last day", "2026-10-12T06:00:00Z"),
+        ] {
+            let form: PostForm = serde_json::from_value(serde_json::json!({
+                "accounts": [], "tags": [], "scheduled_at": time,
+                "versions": [{ "account_id": 0, "is_original": true, "content": [{ "body": body, "media": [] }] }]
+            })).unwrap();
+            database.create_draft_post(&form).unwrap();
+        }
+        let result = database
+            .query_posts(&PostQueryRequest {
+                status: Some("draft".into()),
+                exclude_status: None,
+                keyword: None,
+                accounts: vec![],
+                tags: vec![],
+                calendar_type: Some("month".into()),
+                date: Some("2026-09-05".into()),
+                limit: Some(200),
+                page: None,
+            })
+            .unwrap();
+        assert_eq!(result.total, 2);
+        let previews: Vec<_> = result
+            .items
+            .iter()
+            .map(|post| post.preview.as_str())
+            .collect();
+        assert!(previews.contains(&"First day"));
+        assert!(previews.contains(&"Last day"));
+        assert_eq!(result.calendar_window.unwrap().end_date, "2026-10-11");
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

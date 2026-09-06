@@ -41,6 +41,12 @@ impl AppSettings {
         if self.timezone.trim().is_empty() {
             return Err("timezone is required".to_string());
         }
+        if self.timezone.parse::<chrono_tz::Tz>().is_err() {
+            return Err("Choose a supported timezone.".to_string());
+        }
+        if !matches!(self.date_format.as_str(), "human" | "iso") {
+            return Err("Choose Human date or ISO date.".to_string());
+        }
 
         if !matches!(self.time_format, 12 | 24) {
             return Err("time_format must be 12 or 24".to_string());

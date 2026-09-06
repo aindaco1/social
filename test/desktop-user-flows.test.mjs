@@ -50,7 +50,7 @@ const flowContracts = [
     {
         id: 'POST-01',
         name: 'compose and save a draft',
-        markers: [['app', 'const saveDraftPost = async () =>'], ['app', '<form class="draft-form" @submit.prevent="saveDraftPost">'], ['app', "editingPostUuid.value ? 'Update Post' : 'Save Draft'"]],
+        markers: [['app', 'const saveDraftPost = async () =>'], ['app', '<form class="draft-form" :inert="draftSaving || scheduleSaving" :aria-busy="draftSaving || scheduleSaving" @submit.prevent="saveDraftPost">'], ['app', "editingPostUuid.value ? 'Update Post' : 'Save Draft'"]],
     },
     {
         id: 'POST-02',
@@ -224,6 +224,11 @@ const flowContracts = [
         markers: [['app', 'const saveSettings = async () =>'], ['app', 'settingsDraft.timezone'], ['app', 'settingsDraft.week_starts_on'], ['app', 'settingsDraft.default_accounts']],
     },
     {
+        id: 'SET-04',
+        name: 'choose system light or dark appearance',
+        markers: [['app', 'appearanceOptions'], ['app', '<span>Color theme</span>'], ['app', 'setAppearance($event.target.value)'], ['styles', ':root[data-theme="dark"]']],
+    },
+    {
         id: 'PROF-01',
         name: 'save operator profile and understand local security',
         markers: [['app', '<form class="settings-panel-stack" @submit.prevent="saveSettings">'], ['app', '<h3>Local identity</h3>'], ['app', 'Dust Wave Social does not provide an app-specific password.'], ['app', 'does not create a server login session']],
@@ -261,7 +266,7 @@ const flowContracts = [
     {
         id: 'A11Y-01',
         name: 'expose navigation tabs dialogs fields feedback and intent accessibly',
-        markers: [['app', ':aria-current="activeView === view.id ? \'page\' : undefined"'], ['confirm', 'role="dialog"'], ['confirm', 'aria-modal="true"'], ['confirm', '@keydown.esc.prevent="emit(\'cancel\')"'], ['contextualEditor', ':aria-label="title"'], ['contextualEditor', ':aria-busy="busy"'], ['contextualEditor', 'returnFocusTarget.focus()'], ['tabs', 'role="tablist"'], ['tabs', ':aria-selected="modelValue === tab.id"'], ['app', ':aria-selected="activeServiceTab === service.id"'], ['app', ':aria-selected="activeMediaTab === tab.id"'], ['app', 'aria-label="Report period"']],
+        markers: [['app', ':aria-current="activeView === view.id ? \'page\' : undefined"'], ['confirm', 'role="dialog"'], ['confirm', 'aria-modal="true"'], ['confirm', '@keydown.esc.stop.prevent="!busy && emit(\'cancel\')"'], ['confirm', 'v-dialog-focus'], ['contextualEditor', ':aria-label="title"'], ['contextualEditor', ':aria-busy="busy"'], ['contextualEditor', 'returnFocusTarget.focus()'], ['tabs', 'role="tablist"'], ['tabs', ':aria-selected="modelValue === tab.id"'], ['app', ':aria-selected="activeServiceTab === service.id"'], ['app', ':aria-selected="activeMediaTab === tab.id"'], ['app', 'aria-label="Report period"']],
         absent: [['app', 'window.confirm']],
     },
 ];

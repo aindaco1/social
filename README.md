@@ -6,6 +6,11 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
+Version 0.1.10 is being prepared for the official updater channel, including the UX
+improvements and opt-in native LiteRT upscaling described in [CHANGELOG.md](CHANGELOG.md).
+Independent clean/older-Mac, full-app offline, and human output-quality acceptance
+remain open; publication and updater evidence are recorded in the launch plan.
+
 Version 0.1.9 is the current published release for Apple Silicon macOS. It replaces the desktop, Dock, Finder, and installer icon with the approved new Dust Wave Social design while leaving application behavior unchanged. It is distributed as a signed, notarized, and stapled DMG with signed updater assets; version 0.1.8 remains the immediate rollback baseline.
 
 The protected v0.1.9 workflow installed the public signed update over a staged public v0.1.8 app and verified that the replacement relaunched as v0.1.9 in a new process. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, representative app-data and Keychain survival, and an independent clean-Mac install still require operator evidence.
@@ -77,6 +82,7 @@ composer test
 
 - [Features and limits](docs/FEATURES.md)
 - [User flows and UX regression matrix](docs/USER_FLOWS.md)
+- [September UX review and Mixpost comparison](docs/UX_REVIEW.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Provider integration setup](docs/PROVIDER_SETUP.md)
 - [MVP launch and release operations](docs/MVP_LAUNCH_PLAN.md)

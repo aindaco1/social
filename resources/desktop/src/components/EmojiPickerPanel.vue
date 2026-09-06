@@ -14,6 +14,7 @@ defineEmits(['select']);
         :auto-focus="true"
         :show-preview="false"
         :native="true"
+        color="var(--dw-ink-strong)"
         @select="$emit('select', $event)"
     />
 </template>

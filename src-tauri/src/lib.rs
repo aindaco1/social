@@ -4,6 +4,7 @@ mod db;
 mod domain;
 mod external_media;
 mod facebook;
+mod local_ai_native;
 mod mastodon;
 mod media_staging;
 mod media_tools;
@@ -20,17 +21,28 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            secrets::initialize_namespace(&app.config().identifier)?;
+
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             let database = db::Database::initialize(app.handle())?;
             app.manage(database);
+            app.manage(local_ai_native::NativeAiState::default());
             ci_smoke::maybe_spawn(app);
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                window.state::<local_ai_native::NativeAiState>().stop();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            local_ai_native::local_ai_native_start,
+            local_ai_native::local_ai_native_tile,
+            local_ai_native::local_ai_native_close,
             commands::system_health,
             commands::dashboard_summary,
             commands::app_data_directory,

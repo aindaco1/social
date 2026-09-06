@@ -37,6 +37,7 @@ try {
 
     const manifest = JSON.parse(await readFile(outputPath, 'utf8'));
     assert.equal(manifest.version, '0.1.0');
+    assert.match(manifest.notes, /First local-first Apple Silicon macOS desktop release/);
     assert.equal(manifest.platforms['darwin-aarch64'].signature, 'signed-base64');
     assert.equal(
         manifest.platforms['darwin-aarch64'].url,

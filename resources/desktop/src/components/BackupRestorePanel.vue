@@ -48,7 +48,7 @@ const formatBytes = (value) => {
 </script>
 
 <template>
-    <section class="panel">
+    <section class="panel" :aria-busy="backupRunning || restoreRunning">
         <div class="panel-heading">
             <div>
                 <h2>Backup And Restore</h2>
@@ -84,7 +84,7 @@ const formatBytes = (value) => {
                     </div>
                 </div>
                 <div v-else class="empty-row">No backup created this session</div>
-                <div v-if="backupError" class="form-error">{{ backupError }}</div>
+                <div v-if="backupError" role="alert" class="form-error">{{ backupError }}</div>
             </article>
             <article class="settings-panel">
                 <header>
@@ -98,6 +98,7 @@ const formatBytes = (value) => {
                     <input
                         :value="restorePath"
                         type="text"
+                        aria-label="Backup folder path"
                         placeholder="Backup folder path"
                         @input="$emit('update:restorePath', $event.target.value)"
                     />
@@ -118,11 +119,11 @@ const formatBytes = (value) => {
                         <strong>{{ restoreSummary.safety_backup_path }}</strong>
                     </div>
                     <div class="system-detail-row">
-                        <span>Restored media</span>
-                        <strong>{{ restoreSummary.restored_media_files }} files · {{ formatBytes(restoreSummary.restored_bytes) }}</strong>
+                        <span>Restored data</span>
+                        <strong>{{ restoreSummary.restored_media_files }} media files · {{ formatBytes(restoreSummary.restored_bytes) }} total</strong>
                     </div>
                 </div>
-                <div v-if="restoreError" class="form-error">{{ restoreError }}</div>
+                <div v-if="restoreError" role="alert" class="form-error">{{ restoreError }}</div>
             </article>
         </div>
     </section>

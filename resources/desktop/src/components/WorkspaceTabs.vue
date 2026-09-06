@@ -1,4 +1,6 @@
 <script setup>
+import { vTabNavigation } from '@desktop/tabNavigation.js';
+
 defineProps({
     modelValue: {
         type: String,
@@ -18,7 +20,7 @@ const emit = defineEmits(['update:modelValue']);
 </script>
 
 <template>
-    <div class="workspace-mode-tabs" role="tablist" :aria-label="label">
+    <div v-tab-navigation class="workspace-mode-tabs" role="tablist" :aria-label="label">
         <button
             v-for="tab in tabs"
             :key="tab.id"

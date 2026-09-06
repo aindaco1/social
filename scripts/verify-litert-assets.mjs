@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +26,19 @@ if (existsSync(path.join(projectRoot, 'resources', 'desktop', 'dist'))) {
 }
 
 let failed = false;
+
+// Vite owns this generated entry, alongside the unchanged public runtime/model
+// assets. A packaged app must not silently omit the background execution path.
+if (roots.includes(distRoot)) {
+    const builtAssets = path.resolve(distRoot, '../../assets');
+    const workers = existsSync(builtAssets)
+        ? readdirSync(builtAssets).filter((file) => /^localAi\.worker-[\w-]+\.js$/.test(file))
+        : [];
+    if (workers.length !== 1 || statSync(path.join(builtAssets, workers[0])).size === 0) {
+        console.error('[missing] Expected one bundled Local AI worker');
+        failed = true;
+    }
+}
 
 for (const root of roots) {
     if (!existsSync(root)) {
@@ -65,3 +78,9 @@ console.log(
         : 'LiteRT runtime assets are present in public source.',
 );
 process.stdout.write(modelCheck.stdout || '');
+const nativeCheck = spawnSync(process.execPath, [path.join(scriptDirectory, 'prepare-native-litert.mjs'), '--check'], { cwd: projectRoot, encoding: 'utf8' });
+if (nativeCheck.status !== 0) {
+    process.stderr.write(nativeCheck.stderr || nativeCheck.stdout || 'Native LiteRT validation failed.\n');
+    process.exit(1);
+}
+process.stdout.write(nativeCheck.stdout || '');

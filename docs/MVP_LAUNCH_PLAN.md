@@ -1,6 +1,6 @@
 # Dust Wave Social MVP Launch Plan
 
-Updated: 2026-08-26
+Updated: 2026-09-06
 
 Audience: Dust Wave operators and release maintainers preparing the Apple Silicon macOS release.
 
@@ -28,6 +28,29 @@ npm run mvp:launch:readiness
 Implementation/infrastructure readiness is not the same as live-provider or launch acceptance. Manual items remain open until an operator records evidence from the real provider, account, artifact, or target Mac.
 
 ## Published release evidence
+
+### 0.1.10 release preparation
+
+The operator authorized an official release on 2026-09-06 so additional machines
+can test through the normal updater. This supersedes the earlier unpublished-only
+candidate restriction for this release; it does not claim those machine tests have
+already passed. Local AI stays opt-in. Clean/older-Mac execution, full-app offline
+isolation, human image-quality review, live-provider acceptance, and representative
+operator-data/Keychain survival remain explicit follow-up gates.
+
+The target is `v0.1.10`, using the existing `com.dustwave.social` identity and updater
+signing key. Version 0.1.9 remains the public baseline and rollback installer until
+0.1.10 publication is verified. Release notes and in-app updater notes share the
+0.1.10 entry in [CHANGELOG.md](../CHANGELOG.md). Local screenshots, fixture databases,
+logs and candidate bundles are excluded from source publication.
+
+Required release engineering checks remain enforced: source gates, current app and
+DMG signing/notarization/stapling, mounted-artifact verification, packaged launch,
+native-helper offline inference, published feed/assets, and an automated staged
+0.1.9 → 0.1.10 updater hop. Public artifact and workflow evidence will be recorded
+after publication; preparation is not a publication claim.
+
+### 0.1.9 published baseline
 
 [Dust Wave Social v0.1.9](https://github.com/aindaco1/social/releases/tag/v0.1.9) was published on 2026-08-26 from merge commit `2797e1239796df6429aff5ec5b1666d37552d3cf` for Apple Silicon macOS.
 
@@ -122,6 +145,8 @@ Manual acceptance still required:
 
 ## Remaining critical path
 
+Local UX follow-up (2026-09-05): the media-tool availability probe is now bounded and offloaded. A native isolated fault test survived an unresponsive tool, reported the timeout, and left no child process; the normal staged tools also passed without the earlier host-tool workaround. Native keyboard-step/emoji focus, keyboard media selection, 200% zoom/reflow, multi-account fixtures, and backup/restore with safety-copy and hash checks passed locally. This closes local defects, not signed bundled-tool/clean-Mac, packaged recovery, or full VoiceOver acceptance. The user initially chose local validation only, then authorized a separate unpublished signed/notarized UX test app with isolated data and credentials. This does not authorize replacing the installed production app, publication, or live-provider testing. Evidence and scope are in [UX_REVIEW.md](UX_REVIEW.md#isolated-packaged-candidate).
+
 Complete these in order:
 
 1. Preserve the published v0.1.8 DMG and updater assets as the rollback baseline for v0.1.9.
@@ -168,6 +193,28 @@ Expected release files:
 - `.app.tar.gz` and `.app.tar.gz.sig` in `src-tauri/target/release/bundle/macos/`.
 
 Do not run `npm run desktop:clean` while the candidate is under acceptance or notarization. Release artifacts are not committed; preserve the accepted candidate and a previous known-good installer outside disposable build storage before publishing.
+
+### Isolated unpublished UX candidates
+
+Use a small Tauri overlay with a distinct product name, identifier, and prerelease version. Keep `createUpdaterArtifacts` false and the updater public key/endpoints empty. The running identifier owns both the app-data directory and Keychain service. Do not provide provider environment credentials, copy production data, or use the production-ID development signing runner. The recorded example is `artifacts/ux-candidate-2026-09-05/tauri.ux.conf.json`.
+
+With an existing Developer ID identity available, reuse the normal release/media/notarization tools without cleaning or replacing the production build target:
+
+```sh
+ux_target_root="$(mktemp -d /Users/aindaco1/Library/Caches/social-ux-candidate.XXXXXX)"
+DUSTWAVE_RELEASE_USE_PROJECT_TARGET=true \
+DUSTWAVE_SKIP_ADHOC_SIGN=true \
+CARGO_TARGET_DIR="$ux_target_root/target" \
+node scripts/build-macos-release.mjs --no-temp-keychain --media --bundles app \
+  --config artifacts/ux-candidate-2026-09-05/tauri.ux.conf.json
+
+node scripts/notarize-macos-app.mjs \
+  --app "$ux_target_root/target/release/bundle/macos/Dust Wave Social UX Test.app"
+```
+
+Verify the exact candidate identifier/version, arm64 architecture, hardened runtime, deep/strict signatures, stapled ticket, and Gatekeeper result. Launch that exact path, not the production app. Prefer the native file picker for test fixtures so macOS grants access only to selected files. Record the app's own data path and zero provider credentials/queued jobs before testing. Sign/notarize again after any code change; an earlier accepted submission does not cover a rebuilt app. A ZIP of the stapled app is sufficient for an unpublished test; DMG, public updater, installed-app migration, clean-Mac, and offline acceptance remain separate gates. Do not publish or replace `/Applications/Dust Wave Social.app` under this test authorization.
+
+If Apple's local `notarytool` crashes during upload without confirming a submission, inspect its crash/signal evidence and make bounded retries. The shared notarization wrapper accepts `--no-s3-acceleration` to try the tool's supported alternate upload path without changing authentication, validation, or signing. That path succeeded for ux.7 after two default-upload crashes; it does not establish the crash's cause. Do not use `--force`, bypass Gatekeeper, or treat a failed upload as a notarization rejection/acceptance.
 
 The signed macOS release wrapper uses `~/Library/Caches/DustWaveSocial/target` through `src-tauri/target` unless `DUSTWAVE_RELEASE_USE_PROJECT_TARGET=true`. Before a release check, confirm `src-tauri/target` is absent or resolves to a writable directory. A broken symlink prevents Cargo and artifact checks from running.
 
@@ -278,7 +325,7 @@ Current provider formats and deliberate exclusions are listed in [FEATURES.md](F
 
 ## 6. Local AI Media acceptance
 
-Follow the packaged offline procedure in [LOCAL_AI.md](LOCAL_AI.md). Acceptance requires the current signed app, Wi-Fi disabled, a successful runtime/model probe, representative upscaling, cancellation cleanup, original preservation, metadata verification, quality review, backup/restore, and redaction checks.
+Follow the packaged offline procedure in [LOCAL_AI.md](LOCAL_AI.md). Acceptance requires the current signed app, proven network isolation covering both native and WebKit paths, successful model execution, representative upscaling, cancellation cleanup, original preservation, metadata verification, quality review, backup/restore, and redaction checks. Disabling Wi-Fi alone is not sufficient when other interfaces remain online; never disconnect the host without separate operator approval. The scripted native-helper check is a separate, narrower gate.
 
 True embedding search and model-backed image captioning are deferred; do not describe the current profile-based helpers as those features.
 
@@ -321,7 +368,7 @@ Before treating the current release as operationally launch-ready, or publishing
 - Packaged Local AI Media acceptance passes.
 - Backup/restore, log redaction, and support procedures pass.
 - Operator updater installation, relaunch, and app-data acceptance pass on the target Mac.
-- Visual QA passes at 1024px, 1280px, and wide desktop widths against current Pool/Store design direction.
+- Visual QA passes at the supported native minimum of 1100×720, 1280px, and wide desktop widths against current Pool/Store design direction. The 1024px responsive CSS breakpoint is not a supported native window size unless the Tauri minimum is deliberately changed.
 - Gambado font redistribution rights are confirmed before broader public distribution.
 - The review in [BEST_PRACTICES.md](BEST_PRACTICES.md) has owners, mitigations, and ship/no-ship decisions for every red flag.
 - Owners are named for provider credentials, Apple credentials, updater hosting, backups, support, incident response, and final release approval.

@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitRemoteRepoSlug } from './release-repo.js';
+import { releaseNotes } from './release-notes.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
@@ -65,7 +66,7 @@ const outputPath = path.resolve(
     projectRoot,
     argValue('--output') || 'src-tauri/target/release/bundle/latest.json',
 );
-const notes = argValue('--notes') || envValue('DUSTWAVE_RELEASE_NOTES') || `Dust Wave Social ${version}`;
+const notes = argValue('--notes') || envValue('DUSTWAVE_RELEASE_NOTES') || releaseNotes(version);
 
 if (releaseTag !== `v${version}`) {
     fail(`Updater release tag ${releaseTag} does not match version ${version}; expected v${version}.`);

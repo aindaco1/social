@@ -1,4 +1,4 @@
-use crate::db::Database;
+use crate::db::{Database, DbError};
 use crate::domain::{
     AccountImportQueueBatchSummary, AccountSummary, AppSettings, AudienceForm, BulkDeletePostsForm,
     BulkDeletePostsSummary, DashboardSummary, DesktopMaintenanceSummary,
@@ -33,7 +33,7 @@ use crate::mastodon::{
     register_mastodon_app as register_mastodon_app_provider,
 };
 use crate::media_staging::enroll_media_staging_device;
-use crate::media_tools::{self, MediaToolSource};
+use crate::media_tools::{self, MediaToolProbe, MediaToolResolution, MediaToolSource};
 use crate::secrets::{
     save_service_credential as save_service_credential_secret,
     service_credential_statuses as build_service_credential_statuses,
@@ -50,6 +50,7 @@ fn build_system_health_summary(
     counts: SystemHealthCounts,
     credential_statuses: &[ServiceCredentialStatus],
     generated_at: String,
+    media_tools: SystemMediaToolSummary,
 ) -> SystemHealthSummary {
     let mut issues = Vec::new();
     let missing_credentials = missing_active_credentials(credential_statuses);
@@ -141,7 +142,7 @@ fn build_system_health_summary(
         status: status.to_string(),
         counts,
         issues,
-        media_tools: system_media_tool_summary(),
+        media_tools,
     }
 }
 
@@ -154,36 +155,51 @@ fn system_media_tool_summary() -> SystemMediaToolSummary {
 
 fn media_tool_status(name: &str, env_var: &str, fallback_command: &str) -> SystemMediaToolStatus {
     let resolution = media_tools::resolve_media_tool(env_var, fallback_command);
-    let detail = match (resolution.available, resolution.source) {
-        (true, MediaToolSource::ConfiguredEnv) => {
-            format!("{name} is available through {env_var}.")
-        }
-        (true, MediaToolSource::Bundled) => {
-            format!("{name} is available from the app bundle.")
-        }
-        (true, MediaToolSource::SystemPath) => {
-            format!("{name} is available at {}.", resolution.command)
-        }
-        (true, MediaToolSource::Path) => {
-            format!("{name} is available on PATH.")
-        }
-        (false, MediaToolSource::ConfiguredEnv) => {
-            format!("{name} was configured through {env_var}, but the command could not run.")
-        }
-        (false, MediaToolSource::Bundled) => {
-            format!("{name} was found in the app bundle, but the command could not run.")
-        }
-        (false, _) => {
-            format!(
-                "{name} was not found. Video uploads still work, but thumbnails may not generate."
-            )
+    describe_media_tool(name, env_var, resolution)
+}
+
+fn describe_media_tool(
+    name: &str,
+    env_var: &str,
+    resolution: MediaToolResolution,
+) -> SystemMediaToolStatus {
+    let available = resolution.probe == MediaToolProbe::Available;
+    let detail = if resolution.probe == MediaToolProbe::TimedOut {
+        format!(
+            "{name} did not respond within 2 seconds. Reinstall the approved media tools and refresh System. Other features still work."
+        )
+    } else {
+        match (available, resolution.source) {
+            (true, MediaToolSource::ConfiguredEnv) => {
+                format!("{name} is available through {env_var}.")
+            }
+            (true, MediaToolSource::Bundled) => {
+                format!("{name} is available from the app bundle.")
+            }
+            (true, MediaToolSource::SystemPath) => {
+                format!("{name} is available at {}.", resolution.command)
+            }
+            (true, MediaToolSource::Path) => {
+                format!("{name} is available on PATH.")
+            }
+            (false, MediaToolSource::ConfiguredEnv) => {
+                format!("{name} was configured through {env_var}, but the command could not run.")
+            }
+            (false, MediaToolSource::Bundled) => {
+                format!("{name} was found in the app bundle, but the command could not run.")
+            }
+            (false, _) => {
+                format!(
+                    "{name} was not found. Video uploads still work, but thumbnails may not generate."
+                )
+            }
         }
     };
 
     SystemMediaToolStatus {
         name: name.to_string(),
         command: resolution.command,
-        available: resolution.available,
+        available,
         detail,
     }
 }
@@ -221,18 +237,23 @@ fn facebook_login_configuration_id(database: &Database) -> Result<Option<String>
 }
 
 #[tauri::command]
-pub fn system_health(database: State<'_, Database>) -> Result<SystemHealthSummary, String> {
-    let counts = database
-        .system_health_counts()
-        .map_err(|error| error.to_string())?;
-    let services = database.services().map_err(|error| error.to_string())?;
-    let credential_statuses = build_service_credential_statuses(&services);
-
-    Ok(build_system_health_summary(
-        counts,
-        &credential_statuses,
-        Utc::now().to_rfc3339(),
-    ))
+pub async fn system_health(database: State<'_, Database>) -> Result<SystemHealthSummary, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let counts = database
+            .system_health_counts()
+            .map_err(|error| error.to_string())?;
+        let services = database.services().map_err(|error| error.to_string())?;
+        let credential_statuses = build_service_credential_statuses(&services);
+        Ok(build_system_health_summary(
+            counts,
+            &credential_statuses,
+            Utc::now().to_rfc3339(),
+            system_media_tool_summary(),
+        ))
+    })
+    .await
+    .map_err(|_| "System health check could not complete. Try refreshing System.".to_string())?
 }
 
 #[tauri::command]
@@ -626,85 +647,93 @@ pub fn query_media_library(
 }
 
 #[tauri::command]
-pub fn import_media_file(
+pub async fn import_media_file(
     database: State<'_, Database>,
     media: MediaImportForm,
 ) -> Result<MediaSummary, String> {
-    database
-        .import_media_file(&media)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| db.import_media_file(&media)).await
+}
+
+// File providers, permissions, decoding, and image processing can block for an
+// unbounded time. Keep these operations off the native window's event loop.
+async fn run_media_task<T, F>(database: State<'_, Database>, task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&Database) -> Result<T, DbError> + Send + 'static,
+{
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || task(&database).map_err(|error| error.to_string()))
+        .await
+        .map_err(|_| {
+            "Media operation could not complete. Check the library before retrying.".to_string()
+        })?
 }
 
 #[tauri::command]
-pub fn download_external_media(
+pub async fn download_external_media(
     database: State<'_, Database>,
     media: MediaDownloadForm,
 ) -> Result<MediaSummary, String> {
-    database
-        .download_external_media(&media)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| db.download_external_media(&media)).await
 }
 
 #[tauri::command]
-pub fn local_ai_preflight_media(
+pub async fn local_ai_preflight_media(
     database: State<'_, Database>,
     uuid: String,
 ) -> Result<LocalAiMediaPreflightSummary, String> {
-    database
-        .local_ai_preflight_media(&uuid)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| db.local_ai_preflight_media(&uuid)).await
 }
 
 #[tauri::command]
-pub fn create_local_ai_upscale_derivative(
+pub async fn create_local_ai_upscale_derivative(
     database: State<'_, Database>,
     uuid: String,
     scale_factor: u8,
 ) -> Result<LocalAiMediaDerivativeSummary, String> {
-    database
-        .create_local_ai_upscale_derivative(&uuid, scale_factor)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| {
+        db.create_local_ai_upscale_derivative(&uuid, scale_factor)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_local_ai_model_upscale_derivative(
+pub async fn save_local_ai_model_upscale_derivative(
     database: State<'_, Database>,
     form: LocalAiModelUpscaleDerivativeForm,
 ) -> Result<LocalAiMediaDerivativeSummary, String> {
-    database
-        .save_local_ai_model_upscale_derivative(&form)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| {
+        db.save_local_ai_model_upscale_derivative(&form)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn create_local_ai_crop_derivative(
+pub async fn create_local_ai_crop_derivative(
     database: State<'_, Database>,
     uuid: String,
     target_ratio: String,
 ) -> Result<LocalAiMediaDerivativeSummary, String> {
-    database
-        .create_local_ai_crop_derivative(&uuid, &target_ratio)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| {
+        db.create_local_ai_crop_derivative(&uuid, &target_ratio)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn local_ai_media_search(
+pub async fn local_ai_media_search(
     database: State<'_, Database>,
     query: String,
 ) -> Result<LocalAiMediaSearchSummary, String> {
-    database
-        .local_ai_media_search(&query)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| db.local_ai_media_search(&query)).await
 }
 
 #[tauri::command]
-pub fn draft_local_ai_alt_text(
+pub async fn draft_local_ai_alt_text(
     database: State<'_, Database>,
     uuid: String,
 ) -> Result<LocalAiAltTextDraftSummary, String> {
-    database
-        .draft_local_ai_alt_text(&uuid)
-        .map_err(|error| error.to_string())
+    run_media_task(database, move |db| db.draft_local_ai_alt_text(&uuid)).await
 }
 
 #[tauri::command]
@@ -1412,6 +1441,35 @@ mod tests {
         }
     }
 
+    fn fixture_media_tools() -> SystemMediaToolSummary {
+        let tool = |name: &str| SystemMediaToolStatus {
+            name: name.to_string(),
+            command: "test-only".to_string(),
+            available: true,
+            detail: "Test fixture".to_string(),
+        };
+        SystemMediaToolSummary {
+            ffmpeg: tool("FFmpeg"),
+            ffprobe: tool("FFprobe"),
+        }
+    }
+
+    #[test]
+    fn explains_media_tool_timeout_without_raw_process_output() {
+        let status = describe_media_tool(
+            "FFmpeg",
+            "FFMPEG_PATH",
+            MediaToolResolution {
+                command: "test-only".to_string(),
+                source: MediaToolSource::Bundled,
+                probe: MediaToolProbe::TimedOut,
+            },
+        );
+        assert!(!status.available);
+        assert!(status.detail.contains("within 2 seconds"));
+        assert!(status.detail.contains("Other features still work"));
+    }
+
     #[test]
     fn builds_ok_system_health_without_issues() {
         let summary = build_system_health_summary(
@@ -1425,6 +1483,7 @@ mod tests {
             },
             &[],
             "2026-06-24T15:00:00Z".to_string(),
+            fixture_media_tools(),
         );
 
         assert_eq!(summary.status, "ok");
@@ -1459,6 +1518,7 @@ mod tests {
             },
             &statuses,
             "2026-06-24T15:00:00Z".to_string(),
+            fixture_media_tools(),
         );
 
         assert_eq!(summary.status, "needs_attention");
@@ -1515,6 +1575,7 @@ mod tests {
             },
             &statuses,
             "2026-06-24T15:00:00Z".to_string(),
+            fixture_media_tools(),
         );
 
         assert_eq!(summary.status, "ok");
@@ -1547,6 +1608,7 @@ mod tests {
             },
             &statuses,
             "2026-08-22T15:00:00Z".to_string(),
+            fixture_media_tools(),
         );
 
         assert_eq!(summary.status, "warning");

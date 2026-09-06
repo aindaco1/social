@@ -37,3 +37,4 @@ pub use local_data::{
 pub use local_data::{MediaForm, RateLimitForm};
 pub use provider::{ProviderCapability, provider_capabilities};
 pub use settings::AppSettings;
+pub mod calendar;

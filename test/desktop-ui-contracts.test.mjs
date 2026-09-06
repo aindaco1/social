@@ -39,6 +39,121 @@ const desktopStylesSource = await readFile(
     path.join(projectRoot, 'resources', 'desktop', 'src', 'styles.css'),
     'utf8',
 );
+const backupRestoreSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'BackupRestorePanel.vue'),
+    'utf8',
+);
+const commandsSource = await readFile(
+    path.join(projectRoot, 'src-tauri', 'src', 'commands.rs'),
+    'utf8',
+);
+const providerPreviewSource = await readFile(
+    path.join(projectRoot, 'resources', 'desktop', 'src', 'components', 'ProviderPreviewCard.vue'),
+    'utf8',
+);
+const desktopConfig = JSON.parse(await readFile(path.join(projectRoot, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+const desktopCapability = JSON.parse(await readFile(path.join(projectRoot, 'src-tauri', 'capabilities', 'default.json'), 'utf8'));
+const nativeStartupSource = await readFile(path.join(projectRoot, 'src-tauri', 'src', 'lib.rs'), 'utf8');
+const localAiRuntimeSource = await readFile(path.join(projectRoot, 'resources/desktop/src/localAiModelRuntime.js'), 'utf8');
+const localAiWorkerSource = await readFile(path.join(projectRoot, 'resources/desktop/src/localAi.worker.js'), 'utf8');
+
+test('credential namespace is initialized from the running bundle before database startup', () => {
+    const initialize = nativeStartupSource.indexOf('secrets::initialize_namespace(&app.config().identifier)?');
+    assert.ok(initialize >= 0);
+    assert.ok(initialize < nativeStartupSource.indexOf('db::Database::initialize(app.handle())'));
+});
+
+test('packaged local AI permits bundled WebAssembly without enabling JavaScript eval or remote scripts', () => {
+    const directives = Object.fromEntries(desktopConfig.app.security.csp.split(';').map((directive) => {
+        const [name, ...sources] = directive.trim().split(/\s+/);
+        return [name, sources];
+    }));
+    assert.deepEqual(directives['script-src'], ["'self'", "'wasm-unsafe-eval'"]);
+    assert.deepEqual(directives['worker-src'], ["'self'"]);
+    assert.deepEqual(directives['connect-src'], ["'self'", 'ipc:', 'http://ipc.localhost']);
+    const loader = sourceBetween('const loadLocalAiImage', 'const prepareLocalAiSourceCanvas');
+    assert.ok(loader.indexOf("image.crossOrigin = 'anonymous'") >= 0);
+    assert.ok(loader.indexOf("image.crossOrigin = 'anonymous'") < loader.indexOf('image.src = url'));
+    assert.deepEqual(desktopConfig.app.security.assetProtocol.scope, ['$APPDATA/media/**']);
+});
+
+test('GPU inference requires supported JSPI readback and otherwise reuses the Wasm CPU path', () => {
+    const runtime = localAiRuntimeSource;
+    assert.ok(runtime.includes("['jspi', 'relaxedSimd', 'threads'].map((feature) => litert.supportsFeature(feature))"));
+    assert.ok(runtime.includes("loadLiteRt(new URL('wasm/', assetsBase).href, options.loadOptions)"));
+    assert.ok(runtime.includes('const gpuReadback = Boolean(webgpu && jspi && relaxedSimd)'));
+    assert.ok(runtime.includes("accelerator: gpuReadback ? ['webgpu', 'wasm'] : 'wasm'"));
+    assert.ok(appSource.includes('using compatible Wasm CPU processing'));
+    const drawing = sourceBetween('const drawLocalAiUpscaleTile', 'const upscaleLocalAiMediaWithModel');
+    assert.ok(drawing.includes('localAiOutputRgba(outputData)'));
+});
+
+test('media file and image work leaves the native event loop through one blocking-task boundary', () => {
+    for (const command of ['import_media_file', 'download_external_media', 'local_ai_preflight_media',
+        'create_local_ai_upscale_derivative', 'save_local_ai_model_upscale_derivative',
+        'create_local_ai_crop_derivative', 'local_ai_media_search', 'draft_local_ai_alt_text']) {
+        const body = sourceBetweenText(commandsSource, `pub async fn ${command}(`, '\n}');
+        assert.ok(body.includes('run_media_task(database, move |db|'), command);
+        assert.ok(body.includes('.await'), command);
+    }
+    const runner = sourceBetweenText(commandsSource, 'async fn run_media_task', '\n}');
+    assert.ok(runner.includes('database.inner().clone()'));
+    assert.ok(runner.includes('tauri::async_runtime::spawn_blocking(move ||'));
+});
+
+test('native zoom reuses Tauri hotkeys with only the required webview permission', () => {
+    assert.equal(desktopConfig.app.windows[0].zoomHotkeysEnabled, true);
+    assert.ok(desktopCapability.permissions.includes('core:webview:allow-set-webview-zoom'));
+    assert.ok(appSource.includes('⌘0 for actual size'));
+    const compactStyles = desktopStylesSource.slice(desktopStylesSource.lastIndexOf('@media (max-width: 900px)'));
+    assert.match(compactStyles, /\.composer-action-bar\s*\{\s*position: static;/);
+});
+
+test('unpublished previews do not invent engagement counts or publication age', () => {
+    assert.doesNotMatch(providerPreviewSource, />\s*(?:116|27|312|19h|0 comments)\s*</);
+    assert.ok(providerPreviewSource.includes('class="provider-preview-twitter-metrics" aria-hidden="true"'));
+    assert.ok(appSource.includes("`${selectedDraftAccounts.length} account${selectedDraftAccounts.length === 1 ? '' : 's'} selected`"));
+});
+
+test('editor, selection controls, and restore feedback expose accessible names and states', () => {
+    assert.ok(appSource.includes("'aria-label': 'Post content'"));
+    assert.ok(appSource.includes("'aria-multiline': 'true'"));
+    assert.ok(appSource.includes('aria-label="Select all posts on this page"'));
+    assert.ok(appSource.includes(':aria-label="`Select post: ${post.preview || post.uuid}`"'));
+    assert.ok(appSource.includes(':aria-label="`Select media: ${item.name || item.id}`"'));
+    assert.ok(appSource.includes(':aria-label="`Select media: ${item.name || item.uuid}`"'));
+    assert.ok(backupRestoreSource.includes('aria-label="Backup folder path"'));
+    assert.ok(backupRestoreSource.includes(':aria-busy="backupRunning || restoreRunning"'));
+    assert.match(backupRestoreSource, /v-if="backupError"[^>]*role="alert"/);
+    assert.match(backupRestoreSource, /v-if="restoreError"[^>]*role="alert"/);
+    const restore = sourceBetween('const restoreLocalBackup', 'const clearResolvedSystemState');
+    assert.ok(restore.includes('resetDraftEditor()'));
+    assert.equal(restore.includes('localStorage.removeItem'), false);
+});
+
+test('emoji selection and dismissal restore focus without leaking Enter or trapping Escape', () => {
+    const close = sourceBetween('const closeEmojiPicker', 'const insertDraftEmoji');
+    const insert = sourceBetween('const insertDraftEmoji', 'const canEditPost');
+    assert.ok(close.indexOf('await nextTick()') > close.indexOf('emojiPickerOpen.value = false'));
+    assert.ok(close.indexOf('emojiPickerButton.value?.focus()') > close.indexOf('await nextTick()'));
+    assert.ok(insert.indexOf('editor.view.focus()') > insert.indexOf('await closeEmojiPicker({ returnFocus: false })'));
+    assert.ok(insert.indexOf('editor.view.focus()') > insert.indexOf('editor.commands.insertContent(value)'));
+    assert.ok(appSource.includes('@keydown.esc.capture.stop.prevent="closeEmojiPicker()"'));
+    assert.ok(appSource.includes('@keydown.enter.capture.prevent'));
+    assert.ok(appSource.includes('aria-controls="composer-emoji-picker"'));
+});
+
+test('system health runs blocking diagnostics off the UI thread and displays the actual tool result', () => {
+    const healthCommand = sourceBetweenText(commandsSource, 'pub async fn system_health(', 'pub fn dashboard_summary(');
+    assert.ok(healthCommand.includes('tauri::async_runtime::spawn_blocking(move ||'));
+    assert.ok(appSource.includes("...['ffmpeg', 'ffprobe'].map((tool) => ({"));
+    assert.ok(appSource.includes("health.value?.media_tools?.[tool]?.detail || 'Checking availability…'"));
+    assert.ok(appSource.includes('v-else-if="!workspaceReady"'));
+    assert.ok(appSource.includes('Loading your local workspace…'));
+    assert.ok(appSource.includes("if (!workspaceReady.value) return 'Loading…'"));
+    const startup = sourceBetween('onMounted(async () =>', 'onUnmounted(() =>');
+    assert.ok(startup.indexOf('workspaceReady.value = true') > startup.indexOf('restoreComposerDraft()'));
+});
 
 function sourceBetween(start, end) {
     return sourceBetweenText(appSource, start, end);
@@ -53,6 +168,29 @@ function sourceBetweenText(source, start, end) {
 
     return source.slice(startIndex, endIndex);
 }
+
+test('empty account actions and native dropdowns use shared compact layout contracts', () => {
+    assert.match(appSource, /<div v-else class="empty-action-row">\s*<span>No connected accounts\.<\/span>\s*<button[^>]*openAddAccountModal\(\)/);
+    assert.match(desktopStylesSource, /\.empty-action-row\s*{[^}]*flex-wrap: wrap;[^}]*gap: 12px 16px;/s);
+    assert.match(desktopStylesSource, /\nselect\s*{[^}]*width: min\(100%, var\(--select-width, 100%\)\);[^}]*font-size: 13px;[^}]*font-weight: 500;/s);
+    assert.match(appSource, /class="select-wide" aria-label="Timezone"/);
+    assert.match(appSource, /class="select-compact" aria-label="Date format"/);
+    assert.match(appSource, /class="period-select select-wide"/);
+    assert.ok(appSource.includes("['UTC', ...supportedTimezones, settingsDraft.value.timezone]"));
+    assert.equal(desktopStylesSource.includes('.report-selects .period-select:first-child'), false);
+});
+
+test('every tab group uses the shared keyboard handler and calendar selections are named', () => {
+    for (const source of [appSource, workspaceTabsSource]) {
+        const groups = source.match(/<[^>]+role="tablist"[^>]*>/g) || [];
+        assert.ok(groups.length);
+        for (const group of groups) assert.ok(group.includes('v-tab-navigation'), group);
+    }
+    assert.ok(appSource.includes(':aria-label="`Select post: ${post.preview || post.uuid}`"'));
+    assert.match(appSource, /watch\(activeView, async \(view\) => {\s*window.scrollTo\(0, 0\);/);
+    assert.ok(appSource.includes('for (const post of calendarAgenda.value.items)'));
+    assert.ok(appSource.includes('calendarAgenda.page === calendarAgenda.pages'));
+});
 
 test('TikTok service setup defaults to the deployed Dust Wave broker', () => {
     const match = providerSetupSource.match(/const dustWaveTikTokBrokerUrl = '([^']+)'/);
@@ -136,7 +274,8 @@ test('shared workspace tabs and confirmation dialog preserve accessible interact
     assert.ok(workspaceTabsSource.includes(':aria-selected="modelValue === tab.id"'));
     assert.ok(confirmDialogSource.includes('role="dialog"'));
     assert.ok(confirmDialogSource.includes('aria-modal="true"'));
-    assert.ok(confirmDialogSource.includes('@keydown.esc.prevent="emit(\'cancel\')"'));
+    assert.ok(confirmDialogSource.includes('@keydown.esc.stop.prevent="!busy && emit(\'cancel\')"'));
+    assert.ok(confirmDialogSource.includes('v-dialog-focus'));
     assert.ok(appSource.includes('const requestConfirmation = ({'));
     assert.equal(appSource.includes('window.confirm'), false);
 });
@@ -252,17 +391,57 @@ test('provider setup uses the shared catalog and one guided portal-to-account pa
 
 test('local AI media labs are opt-in and use bundled LiteRT assets', () => {
     assert.ok(appSource.includes('local_ai_media_labs'));
-    assert.ok(appSource.includes("await import('@litertjs/core')"));
-    assert.ok(appSource.includes("await litert.loadLiteRt('./litert/wasm/')"));
-    assert.ok(appSource.includes("fetch('./litert/models/manifest.json'"));
-    assert.ok(appSource.includes("loadAndCompile(`./litert/models/${bundle.modelFile.path}`"));
-    assert.ok(appSource.includes('new Tensor(inputBytes, inputShape)'));
+    assert.ok(localAiWorkerSource.includes("import('@litertjs/core')"));
+    assert.equal(appSource.includes("import('@litertjs/core')"), false);
+    assert.ok(localAiRuntimeSource.includes("await litert.loadLiteRt(new URL('wasm/', assetsBase).href, options.loadOptions)"));
+    assert.ok(localAiRuntimeSource.includes("fetchAsset(new URL('models/manifest.json', assetsBase).href"));
+    assert.ok(localAiRuntimeSource.includes("loadAndCompile(new URL(`models/${bundle.modelFile.path}`, assetsBase).href"));
+    assert.ok(localAiRuntimeSource.includes('new Tensor(inputBytes, inputShape)'));
     assert.ok(appSource.includes("toDataURL('image/png')"));
     assert.ok(appSource.includes('compiled_model'));
     assert.ok(appSource.includes("invoke('save_local_ai_model_upscale_derivative'"));
     assert.ok(appSource.includes('cancelLocalAiOperation'));
     assert.ok(appSource.includes("invoke('local_ai_media_search'"));
-    assert.ok(appSource.includes('Semantic media search'));
+    assert.ok(appSource.includes('Search filenames or image properties'));
+    assert.equal(appSource.includes('Semantic media search'), false);
+});
+
+test('model probe and inference share a cancellable classic worker with operation-owned cleanup', () => {
+    assert.ok(appSource.includes("new Worker(new URL('./localAi.worker.js', import.meta.url))"));
+    assert.ok(localAiWorkerSource.includes("import('./localAiModelRuntime.js')"));
+    assert.ok(localAiWorkerSource.includes("base.pathname !== '/litert/'"));
+    for (const [start, end] of [['const upscaleLocalAiMediaWithModel', 'const probeLocalAiRuntime'], ['const probeLocalAiRuntime', 'const cancelLocalAiOperation']]) {
+        const body = sourceBetween(start, end);
+        assert.ok(body.includes('openLocalAiModelSession(signal)'));
+        assert.ok(body.includes('recordLocalAiModelReady(modelBundle)'));
+        assert.ok(body.includes("client.request('release')"));
+        assert.ok(body.includes('client?.dispose()'));
+    }
+    const model = sourceBetween('const upscaleLocalAiMediaWithModel', 'const probeLocalAiRuntime');
+    assert.ok(model.includes("client.request('tile', { inputBytes }, [inputBytes.buffer])"));
+    assert.ok(model.includes('observeLocalAiResponsiveness()'));
+    assert.ok(sourceBetween('const probeLocalAiRuntime', 'const cancelLocalAiOperation').includes('{ cancellable: true }'));
+});
+
+test('local media feedback shares live regions, editable drafts, and the model commit boundary', async () => {
+    const feedback = await readFile(path.join(projectRoot, 'resources/desktop/src/components/LocalMediaFeedback.vue'), 'utf8');
+    assert.ok(feedback.includes('role="status" aria-live="polite" aria-atomic="true"'));
+    assert.ok(feedback.includes('role="alert" aria-atomic="true"'));
+    assert.ok(feedback.includes('v-if="canCancel"'));
+    assert.ok(feedback.includes('aria-describedby="local-ai-alt-text-review"'));
+    assert.ok(feedback.includes("dismissControl('update:draft', null)"));
+    assert.ok(feedback.includes('feedback.value?.focus({ preventScroll: true })'));
+    assert.ok(appSource.includes('v-model:draft="localAiAltTextDraft"'));
+    const altText = sourceBetween('const draftLocalAiAltText', 'const searchLocalAiMedia');
+    assert.ok(altText.includes('currentDraft.text !== currentDraft.generatedText'));
+    assert.ok(altText.includes("cancelLabel: 'Keep draft'"));
+    assert.ok(altText.indexOf('await requestConfirmation') < altText.indexOf("invoke('draft_local_ai_alt_text'"));
+    assert.ok(appSource.includes('localAiSearchResults.matches.slice(0, LOCAL_MEDIA_SEARCH_PREVIEW_LIMIT)'));
+    const model = sourceBetween('const upscaleLocalAiMediaWithModel', 'const probeLocalAiRuntime');
+    assert.ok(model.includes('beginCommit()'));
+    assert.ok(model.indexOf('beginCommit()') < model.indexOf("invoke('save_local_ai_model_upscale_derivative'"));
+    assert.ok(appSource.includes('{ reload: true, cancellable: true }'));
+    assert.equal(appSource.includes('localAiAbortController'), false);
 });
 
 test('topbar updater uses the Podcast Visualizer icon and compact check-or-install flow', () => {

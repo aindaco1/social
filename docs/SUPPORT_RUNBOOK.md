@@ -17,6 +17,8 @@ Do not ask operators to browse the SQLite database directly unless engineering i
 
 Production credentials use the `com.dustwave.social` macOS Keychain service. A changing ad-hoc debug signature produces a new code requirement after each rebuild, so macOS can ask for access repeatedly even when the credential itself is unchanged.
 
+The credential namespace is initialized once from the running Tauri bundle identifier, before database startup. An alternate test identifier gets a separate Keychain service as well as a separate app-data directory; there is no fallback to production credentials if initialization is missing. The production identifier and existing credential names are unchanged. For isolated packaged testing, also omit updater configuration and provider environment credentials; do not use the production-ID development runner.
+
 1. Start local development with `npm run desktop:dev`; its Cargo runner signs the debug executable with an installed Developer ID identity and the stable `com.dustwave.social` identifier before launch.
 2. Confirm `codesign -dr - src-tauri/target/debug/dust-wave-social` reports an identifier-based Apple Developer ID requirement, not a `cdhash` requirement.
 3. If no Developer ID identity is installed, keep the debug build in its default environment-only credential mode. Do not choose Always Allow for an ad-hoc requester or weaken the saved Keychain item's access controls.
@@ -87,9 +89,9 @@ Local AI Media Labs runs only inside the desktop app with bundled runtime assets
 When Local AI probe or Upscale fails:
 
 1. In Settings, confirm Local AI media is enabled.
-2. In Media, use Probe LiteRT and record whether the panel reports WebGPU, Wasm fallback, or an error.
+2. In Media, use Probe LiteRT and record whether the panel reports native LiteRT CPU, WebGPU, Wasm compatibility processing, or an error. A probe is a diagnostic, not a required setup step.
 3. Confirm the selected media is a static local image, not a GIF, video, external provider reference, or missing file.
-4. Re-run Upscale with the app online and then with Wi-Fi disabled if this is release acceptance.
+4. Confirm the source is at most 512 × 512px. Re-run Upscale. For release acceptance, follow the network-isolation procedure and consent boundary in [Local AI](LOCAL_AI.md#packaged-app-acceptance); do not change the operator's network settings without approval.
 5. If the operator cancels, confirm no partial derivative appears in Media.
 6. If a derivative is created, review it before publishing. The original media should remain available, and the derivative metadata should include the source media, model/runtime details, dimensions, and SHA-256 hashes.
 7. If generated output is poor, delete the derivative and keep the original. Treat model quality as an acceptance issue, not a provider failure.

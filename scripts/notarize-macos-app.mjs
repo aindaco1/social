@@ -194,9 +194,11 @@ if (!currentSubmissionId) {
         ...authArgs(),
         '--output-format',
         'json',
+        ...(args.includes('--no-s3-acceleration') ? ['--no-s3-acceleration'] : []),
     ]);
 
     if (result.status !== 0) {
+        if (result.signal) console.error(`Notarization tool terminated by ${result.signal}; no successful submission was confirmed.`);
         process.stderr.write(result.stderr || result.stdout || 'Failed to submit artifact for notarization.');
         process.exit(result.status || 1);
     }

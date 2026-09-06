@@ -1,7 +1,7 @@
 <script setup>
-import { nextTick, ref, watch } from 'vue';
+import { vDialogFocus } from '../dialogFocus.js';
 
-const props = defineProps({
+defineProps({
     open: {
         type: Boolean,
         default: false,
@@ -18,6 +18,8 @@ const props = defineProps({
         type: String,
         default: 'Continue',
     },
+    cancelLabel: { type: String, default: 'Cancel' },
+    secondaryLabel: { type: String, default: '' },
     busy: {
         type: Boolean,
         default: false,
@@ -28,35 +30,22 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['cancel', 'confirm']);
-const dialog = ref(null);
-
-watch(() => props.open, async (open) => {
-    if (!open) {
-        return;
-    }
-
-    await nextTick();
-    dialog.value?.focus();
-});
+const emit = defineEmits(['cancel', 'confirm', 'secondary']);
 </script>
 
 <template>
     <div
         v-if="open"
+        v-dialog-focus
         class="modal-backdrop"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirmation-dialog-title"
         aria-describedby="confirmation-dialog-description"
-        @click.self="emit('cancel')"
+        @click.self="!busy && emit('cancel')"
+        @keydown.esc.stop.prevent="!busy && emit('cancel')"
     >
-        <div
-            ref="dialog"
-            class="confirmation-dialog"
-            tabindex="-1"
-            @keydown.esc.prevent="emit('cancel')"
-        >
+        <div class="confirmation-dialog">
             <header>
                 <div>
                     <h3 id="confirmation-dialog-title">{{ title }}</h3>
@@ -75,8 +64,9 @@ watch(() => props.open, async (open) => {
             <p id="confirmation-dialog-description">{{ description }}</p>
             <div class="modal-actions">
                 <button type="button" class="inline-button" :disabled="busy" @click="emit('cancel')">
-                    Cancel
+                    {{ cancelLabel }}
                 </button>
+                <button v-if="secondaryLabel" type="button" class="inline-button" :disabled="busy" @click="emit('secondary')">{{ secondaryLabel }}</button>
                 <button
                     type="button"
                     :class="{ 'danger-button': danger }"
