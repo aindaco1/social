@@ -22,6 +22,9 @@ Versions through `2.6.0` are the changelog for the retained Mixpost Lite package
 - Refined Meta/TikTok onboarding and media-provider setup guidance.
 - Added a repeatable native LiteRT offline test with explicit TCP/UDP denial
   controls; the release pipeline checks the actual packaged helper before publication.
+- Updated the transitive query-string parser and added editor attribute-boundary
+  regression coverage. The remaining Tiptap dependency advisory and its scoped
+  desktop exposure assessment are documented in `SECURITY.md`.
 
 Testing notes: Local AI Media Labs remains opt-in. Enable it in Settings, save,
 then import a small PNG/JPEG in Media and choose Upscale. Keep the original and

@@ -34,3 +34,24 @@ Dust Wave Social makes one background request to its public signed release feed 
 ## Product Risk Reports
 
 Some issues are not classic security bugs but still block a responsible release. Use `docs/BEST_PRACTICES.md` as the red-flag standard. Report product risks privately when public disclosure would help abuse the app or compromise accounts; otherwise record them in the issue tracker with an owner, mitigation, and ship/no-ship decision.
+
+## 0.1.10 dependency review
+
+The 2026-09-06 production npm audit identified the existing Tiptap 2.x dependency
+through [GHSA-cp6q-959q-f8rh](https://github.com/ueberdosis/tiptap/security/advisories/GHSA-cp6q-959q-f8rh).
+The upstream fix is in Tiptap 3.30.4; this release does not claim the 2.x dependency
+itself is patched or that the production npm audit is clean.
+
+The reviewed desktop composer passes string content into a fixed Document/Div/Text/Link
+schema, does not accept imported attribute objects or dynamic HTMLAttributes, and
+uses a CSP without inline JavaScript permission. A regression test using the actual
+schema and JSON-origin prototype/event attributes confirms those fields do not reach
+the rendered attribute object. Another contract protects the current string/static
+attribute boundary. This is a scoped exposure assessment, not a blanket guarantee:
+adding custom attributes, imported editor JSON, or dynamic extensions requires a new
+review. Upgrading the editor to the patched major version remains maintenance work.
+
+The transitive `qs` dependency was updated to the patched 6.16.0 release for
+[its parsing advisories](https://github.com/ljharb/qs/security/advisories/GHSA-x5fp-wj9c-mxmx).
+It is used by the retained Inertia web package, not by the desktop entry point.
+Development-server findings are separate from packaged application exposure.
