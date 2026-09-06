@@ -6,14 +6,21 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-Version 0.1.10 is being prepared for the official updater channel, including the UX
-improvements and opt-in native LiteRT upscaling described in [CHANGELOG.md](CHANGELOG.md).
-Independent clean/older-Mac, full-app offline, and human output-quality acceptance
-remain open; publication and updater evidence are recorded in the launch plan.
+[Version 0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10) is published
+on the official updater channel for Apple Silicon macOS. It includes the UX
+improvements and opt-in native LiteRT upscaling described in [CHANGELOG.md](CHANGELOG.md),
+with signed, notarized, stapled app/DMG bundles and signed updater assets.
+Version 0.1.9 is the immediate rollback baseline.
 
-Version 0.1.9 is the current published release for Apple Silicon macOS. It replaces the desktop, Dock, Finder, and installer icon with the approved new Dust Wave Social design while leaving application behavior unchanged. It is distributed as a signed, notarized, and stapled DMG with signed updater assets; version 0.1.8 remains the immediate rollback baseline.
+The release workflow installed the public signed update over a staged public
+0.1.9 app and verified automatic relaunch as 0.1.10 in a new process. Independent
+downloads verified all five public asset digests, bundle trust, the live updater
+feed, and native-helper offline inference. Clean/older-Mac execution, full-app
+offline isolation, human output-quality approval, live-provider acceptance, and
+representative operator-data/Keychain survival remain open. Follow the
+[other-Mac testing checklist](docs/MVP_LAUNCH_PLAN.md#testing-on-another-mac).
 
-The protected v0.1.9 workflow installed the public signed update over a staged public v0.1.8 app and verified that the replacement relaunched as v0.1.9 in a new process. Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier. Production provider credentials, real-account publishing/import acceptance, packaged local-AI review, representative app-data and Keychain survival, and an independent clean-Mac install still require operator evidence.
+Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
 
 Run the current readiness audit instead of copying status counts into another document:
 

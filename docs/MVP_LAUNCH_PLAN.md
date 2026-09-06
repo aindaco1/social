@@ -29,7 +29,11 @@ Implementation/infrastructure readiness is not the same as live-provider or laun
 
 ## Published release evidence
 
-### 0.1.10 release preparation
+### 0.1.10 published release
+
+[Dust Wave Social v0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10)
+was published on 2026-09-06 from merge commit
+`d37821a53c84a1f12be18da32ce9dcf5041d8b03` for Apple Silicon macOS.
 
 The operator authorized an official release on 2026-09-06 so additional machines
 can test through the normal updater. This supersedes the earlier unpublished-only
@@ -38,17 +42,32 @@ already passed. Local AI stays opt-in. Clean/older-Mac execution, full-app offli
 isolation, human image-quality review, live-provider acceptance, and representative
 operator-data/Keychain survival remain explicit follow-up gates.
 
-The target is `v0.1.10`, using the existing `com.dustwave.social` identity and updater
-signing key. Version 0.1.9 remains the public baseline and rollback installer until
-0.1.10 publication is verified. Release notes and in-app updater notes share the
+The release uses the existing `com.dustwave.social` identity and updater signing
+key. Version 0.1.9 is the immediate rollback installer. Release notes and in-app updater notes share the
 0.1.10 entry in [CHANGELOG.md](../CHANGELOG.md). Local screenshots, fixture databases,
 logs and candidate bundles are excluded from source publication.
 
-Required release engineering checks remain enforced: source gates, current app and
-DMG signing/notarization/stapling, mounted-artifact verification, packaged launch,
-native-helper offline inference, published feed/assets, and an automated staged
-0.1.9 → 0.1.10 updater hop. Public artifact and workflow evidence will be recorded
-after publication; preparation is not a publication claim.
+- The [post-merge main checks](https://github.com/aindaco1/social/actions/runs/34057979708) passed before tagging. The [v0.1.10 tag workflow](https://github.com/aindaco1/social/actions/runs/34058509458) passed in approximately 12 minutes, rerunning 156 JavaScript tests, 150 Rust tests, and both six-test Worker suites before packaging.
+- Apple accepted app submission `55771d73-1445-4525-b1bd-7bb15be6f5d9`.
+- Apple accepted DMG submission `99036d47-10a7-4904-91ab-460a9048a7cb`; app/DMG stapling, Gatekeeper, strict signatures, and mounted installer layout passed.
+- Packaged launch and exact packaged native-helper network-denied inference passed before publication. One/four-thread reference pixels matched; cancellation reaped the helper and malformed frames were rejected. The report deliberately records `full_app_offline_accepted: false`.
+- The published updater installed all 62,246,193 signed bytes over a staged public 0.1.9 app and verified automatic relaunch as 0.1.10, PID 38059 → 38096.
+- Independent post-publication downloads matched all five GitHub asset digests, the live latest-release feed, release notes, and embedded updater signature. The DMG, app ZIP, and updater archive passed trust/identity checks and contained the same 28 regular bundle files. The approved app/volume icon was unchanged.
+- The independently downloaded app repeated the native-only network-denial test successfully; its signed helper SHA-256 was `e84d7a28e0c398192e1fd82e67c24a28d5ba8bd3c3d030d8cf2d0840b525be7f`. No Social interface was launched locally, and the installed 0.1.9 executable and bundle metadata stayed unchanged.
+- All five 0.1.9 rollback assets were independently downloaded and checksum-verified; its mounted DMG, notarization ticket, and Gatekeeper assessment passed. Accepted local candidates, public downloads, and rollback copies are preserved separately in the local release cache, not the source checkout's default target directory.
+
+Published SHA-256 checksums:
+
+| Asset | SHA-256 |
+| --- | --- |
+| `Dust.Wave.Social_0.1.10_aarch64.dmg` | `5e9ec2c368ef1cce4a8c5de3a2353b668b869a972b2df28eb7529b206a66f8a9` |
+| `Dust.Wave.Social.app.tar.gz` | `ce6bafd5ced108a1f5c059a33d00ca192953e1397e68784b9cedd4cf1e8e9f9c` |
+| `Dust.Wave.Social.app.tar.gz.sig` | `5ab464867d227448c50773f375f13d6350eb33748f97f1b98dc01109057036f8` |
+| `Dust.Wave.Social.app.zip` | `c13e8ce1dc3a37b3663b11bf548f2fe889b0bd2259057dff1432b94c08021dbe` |
+| `latest.json` | `eeb918169ed1ccf6ee69d74a82838dae758734f8109678c98149bbedd93b9712` |
+
+The remaining Tiptap advisory and the tested desktop input boundary are documented
+in [SECURITY.md](../SECURITY.md); this is not a clean dependency-audit claim.
 
 ### 0.1.9 published baseline
 
@@ -80,17 +99,17 @@ The generated section below describes local checkout artifacts, which may differ
 Generated: not generated; no local DMG
 
 Repository: `aindaco1/social`
-Source state: release tag v0.1.9 exists; the checkout may include post-release changes
+Source state: release tag v0.1.10 exists; the checkout may include post-release changes
 Release state: no complete local release candidate; recover or rebuild the missing artifacts before acceptance or publication.
 
 ## Artifacts
 
-- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.9_aarch64.dmg`
-- Recorded notarization submission (verify it matches this DMG): `8e278174-0da3-4cee-a72b-74ce900009bb`
+- Apple Silicon DMG: missing at `src-tauri/target/release/bundle/dmg/Dust Wave Social_0.1.10_aarch64.dmg`
+- Recorded notarization submission (verify it matches this DMG): `99036d47-10a7-4904-91ab-460a9048a7cb`
 - Tauri updater latest.json: missing at `src-tauri/target/release/bundle/latest.json`
 - Tauri updater archive: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz`
 - Tauri updater signature: missing at `src-tauri/target/release/bundle/macos/Dust Wave Social.app.tar.gz.sig`
-- Updater version: `0.1.9`
+- Updater version: `0.1.10`
 - Updater URL: not generated
 - Updater signature embedded in latest.json: no
 
@@ -145,18 +164,18 @@ Manual acceptance still required:
 
 ## Remaining critical path
 
-Local UX follow-up (2026-09-05): the media-tool availability probe is now bounded and offloaded. A native isolated fault test survived an unresponsive tool, reported the timeout, and left no child process; the normal staged tools also passed without the earlier host-tool workaround. Native keyboard-step/emoji focus, keyboard media selection, 200% zoom/reflow, multi-account fixtures, and backup/restore with safety-copy and hash checks passed locally. This closes local defects, not signed bundled-tool/clean-Mac, packaged recovery, or full VoiceOver acceptance. The user initially chose local validation only, then authorized a separate unpublished signed/notarized UX test app with isolated data and credentials. This does not authorize replacing the installed production app, publication, or live-provider testing. Evidence and scope are in [UX_REVIEW.md](UX_REVIEW.md#isolated-packaged-candidate).
+Local UX follow-up (2026-09-05): the media-tool availability probe is now bounded and offloaded. A native isolated fault test survived an unresponsive tool, reported the timeout, and left no child process; the normal staged tools also passed without the earlier host-tool workaround. Native keyboard-step/emoji focus, keyboard media selection, 200% zoom/reflow, multi-account fixtures, and backup/restore with safety-copy and hash checks passed locally. This closes local defects, not clean-Mac or full VoiceOver acceptance. The user initially chose local validation only, then authorized an isolated unpublished candidate, and subsequently authorized the official 0.1.10 release recorded above. Publication did not replace the installed production app or perform live-provider testing. Evidence and scope are in [UX_REVIEW.md](UX_REVIEW.md#isolated-packaged-candidate).
 
 Complete these in order:
 
-1. Preserve the published v0.1.8 DMG and updater assets as the rollback baseline for v0.1.9.
+1. Keep the verified published v0.1.9 DMG and updater assets as the rollback baseline for v0.1.10.
 2. Install the stapled DMG on an independent clean Apple Silicon Mac.
 3. Configure production provider/media services without copying secrets into documentation.
 4. Inventory and connect every Dust Wave account in MVP scope.
 5. Run live publishing, scheduling, imports, reports, failure recovery, and provider-limit acceptance.
 6. Run packaged offline Local AI Media acceptance and review derivative quality.
 7. Test backup/restore and support-export redaction on clean app data.
-8. Start from an installed v0.1.8 app with representative data, update to v0.1.9, and confirm automatic relaunch plus app-data and Keychain-backed configuration survival.
+8. Start from an installed v0.1.9 app with representative data, update to v0.1.10, and confirm automatic relaunch plus app-data and Keychain-backed configuration survival.
 9. Complete visual, product-risk, security, ownership, and operational go/no-go review.
 
 ## 1. Build and preserve the candidate
@@ -344,17 +363,39 @@ Use [SUPPORT_RUNBOOK.md](SUPPORT_RUNBOOK.md) for failure and incident procedures
 
 ## 8. Updater acceptance
 
-The protected v0.1.9 tag workflow passed public manifest resolution, downloaded the published v0.1.8 app archive, installed the signed v0.1.9 update into a canonical staged copy, verified that copy's bundle version, and proved the automatic process relaunch. The release uses the same updater private key trusted by earlier versions. This closes automated signed-updater acceptance but does not substitute for verifying representative operator data and Keychain-backed setup on the installed app.
+The v0.1.10 tag workflow passed public manifest resolution, downloaded the published v0.1.9 app archive, installed the signed v0.1.10 update into a canonical staged copy, verified that copy's bundle version, and proved automatic process relaunch. The release uses the same updater private key trusted by earlier versions. This closes automated signed-updater acceptance but does not substitute for verifying representative operator data and Keychain-backed setup on the installed app.
 
 Operator acceptance remains:
 
 1. Back up representative app data from System.
-2. Confirm the installed v0.1.8 app loads that data before starting the update.
-3. From v0.1.8, open Dust Wave Social and wait for the quiet launch check to surface v0.1.9, or use the top-right Update action or detailed controls in System.
-4. Explicitly install the update, then confirm the old process exits, Dust Wave Social relaunches automatically, and System reports v0.1.9.
+2. Confirm the installed v0.1.9 app loads that data before starting the update.
+3. From v0.1.9, open Dust Wave Social and wait for the quiet launch check to surface v0.1.10, or use the top-right Update action or detailed controls in System.
+4. Explicitly install the update, then confirm the old process exits, Dust Wave Social relaunches automatically, and System reports v0.1.10.
 5. Confirm representative app data, Keychain-backed service readiness, and saved Provider setup configuration survived.
 
 Losing or replacing the updater private key prevents installed clients from trusting future updates. Back it up outside the repository.
+
+### Testing on another Mac
+
+Use an Apple Silicon Mac and the official build, not a development server or the
+isolated UX candidate. Before testing, record the Mac model/chip, macOS version,
+starting Social version, and whether the account has existing Social data. Keep a
+backup and the previous release's DMG available.
+
+Follow the updater acceptance steps above first. Then follow
+[Using image upscaling](LOCAL_AI.md#using-image-upscaling), recording the selected
+runtime, input/output dimensions, processing time, cancellation/retry result, and
+whether the original stayed unchanged. Check a transparent PNG and a photograph;
+review faces, text, and fine detail at the intended display size. Native LiteRT is
+expected on macOS 14+; older supported systems must report their actual Wasm path
+or capability error, not be counted as a native pass.
+
+Record each result as pass, fail, or not tested. Keep representative data/Keychain
+survival, clean-install trust, visual quality, and
+[full-app offline acceptance](LOCAL_AI.md#packaged-app-acceptance) separate. Include
+the exact error and a redacted support export for failures; do not include tokens,
+credentials, or private media in public reports. Performance on one Mac is not a
+claim about all supported machines.
 
 ## 9. Final go/no-go
 
