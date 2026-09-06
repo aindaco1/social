@@ -1,6 +1,6 @@
 # Provider Integration Setup
 
-Updated: 2026-08-29
+Updated: 2026-09-06
 
 Audience: people configuring Dust Wave Social for accounts they control.
 
@@ -157,7 +157,32 @@ Exact setup values:
 - Attribution: `Dust Wave Social supplies “Search KLIPY” and “Powered by KLIPY” with the official logo; preserve this treatment and the provided content attribution.`
 - Dust Wave credential field: **API Key**
 
-Save the test key and activate Klipy. Dust Wave Social supplies the required search placeholder and bundled attribution treatment; do not remove or restyle them into invisibility. Open Media > GIFs and run one controlled search. Klipy media stays a provider reference and may be materialized only as a temporary publish-time file; it must not be added to the reusable local media library. Review [GIF_PROVIDER_DECISION.md](GIF_PROVIDER_DECISION.md) before production use.
+Save the test key and activate Klipy. Dust Wave Social supplies the required search placeholder and bundled attribution treatment; do not remove or restyle them into invisibility. Open Media > GIFs and run one controlled search. Klipy media stays a provider reference and may be materialized only as a temporary publish-time file; it must not be added to the reusable local media library. Keep the content policy below when preparing production access.
+
+### GIF content policy
+
+Klipy is the active desktop GIF provider; manual/local GIF import remains
+independent. Retained Tenor code belongs to the legacy Mixpost package, not the
+desktop acceptance path.
+
+The existing implementation policy, based on the prior review of
+[Klipy's API terms](https://klipy.com/support/api-terms), is:
+
+- Search, preview, select, and attach external provider references. Keep only the
+  metadata needed to re-fetch or publish; do not create a reusable library of
+  downloaded Klipy binaries or an internal GIF collection.
+- Materialize media only for a publish-time upload attempt, then delete temporary
+  files on success or failure. Exclude them from backups and support exports.
+- Preserve `Search KLIPY`, `Powered by KLIPY`, the official logo, and supplied
+  content attribution, including before results are requested.
+- Keep Ads API, tracking/device identifiers, and mixed GIF-provider result sets
+  out of this MVP. Keep local/manual GIF import available without Klipy.
+- Recheck current terms, filters/blocklists, and production-access requirements
+  before wider use. Permanent Klipy-library imports require a separate permission
+  and product decision; this cleanup does not grant that permission.
+
+Current acceptance evidence belongs in [Project status](PROJECT_STATUS.md#integration-acceptance),
+not in a second provider decision log.
 
 ## Mastodon
 

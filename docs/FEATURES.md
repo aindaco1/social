@@ -2,7 +2,7 @@
 
 Audience: product, engineering, QA, support, and release operators.
 
-This document describes the current product surface. The canonical operator journeys and their regression IDs are in [USER_FLOWS.md](USER_FLOWS.md); release readiness and manual acceptance belong in [MVP_LAUNCH_PLAN.md](MVP_LAUNCH_PLAN.md); implementation boundaries belong in [ARCHITECTURE.md](ARCHITECTURE.md).
+This document describes the current product surface. The canonical operator journeys and their regression IDs are in [USER_FLOWS.md](USER_FLOWS.md); current readiness and acceptance gaps belong in [PROJECT_STATUS.md](PROJECT_STATUS.md); implementation boundaries belong in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Desktop workflows
 
@@ -23,7 +23,7 @@ Migration, schema, release-readiness, raw database, provider-capability, and raw
 
 The global Create post / Continue draft action opens the existing composer without resetting its content. The first-account dashboard offers Add account. Shared modal keyboard behavior handles initial focus, Tab wrapping, focus return, and Escape cancellation. Theme colors reuse one semantic palette; photos, GIFs, and brand artwork are not color-inverted.
 
-Replacing unsaved composer content offers Keep editing, Save draft and continue, or Discard and continue. Explicit Save keeps the draft open with real saved/recovery feedback. Preview sits beside writing at wide widths; account/version/library controls are disclosed as needed. Media intake leads with picker/drop, with path/URL and storage details secondary. Connections keeps CSV/plan exports and batch queues under Operator tools. Reports distinguish No data from zero, label observed-day averages, and show the latest available observation date. See [UX_REVIEW.md](UX_REVIEW.md) for local verification and remaining acceptance limits.
+Replacing unsaved composer content offers Keep editing, Save draft and continue, or Discard and continue. Explicit Save keeps the draft open with real saved/recovery feedback. Preview sits beside writing at wide widths; account/version/library controls are disclosed as needed. Media intake leads with picker/drop, with path/URL and storage details secondary. Connections keeps CSV/plan exports and batch queues under Operator tools. Reports distinguish No data from zero, label observed-day averages, and show the latest available observation date. See [Project status](PROJECT_STATUS.md) for verified outcomes and remaining acceptance limits.
 
 ## Provider support
 
@@ -61,7 +61,7 @@ The media library supports:
 - Deterministic JPEG/PNG thumbnails and video thumbnails when FFmpeg/FFprobe is available.
 - File type/size validation, safe deletion, and orphan cleanup.
 
-Klipy files cannot be saved into the reusable local library without written permission. See [GIF_PROVIDER_DECISION.md](GIF_PROVIDER_DECISION.md).
+Klipy files cannot be saved into the reusable local library without written permission. See [the GIF content policy](PROVIDER_SETUP.md#gif-content-policy).
 
 ## Local AI Media Labs
 

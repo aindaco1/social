@@ -31,7 +31,7 @@ Implemented:
 - Alt-text edits are temporary session state. Copy reviewed text before quitting; it is not saved to media metadata or attached to posts automatically.
 - Cancellation is offered for the runtime probe and model upscaling before its save boundary. It kills/reaps the native helper or terminates the browser worker and discards partial in-memory tiles. Atomic native profile/crop/save operations do not offer a nonfunctional Cancel button. A derivative that has already saved is reported as complete even if refreshing the media list subsequently fails.
 - Inputs are limited to 512 × 512px (at most 36 overlapping tiles, 2048 × 2048px output). Larger sources are explicitly rejected, not silently reduced and labeled as 4x upscales. This bounded Labs scope is visible before use and enforced again when saving. Originals remain unchanged. Model-generated fine detail is an estimate, not recovered ground truth.
-- Native CPU processing uses at most four threads, reserving CPU capacity for the app. It does not need WebView cross-origin isolation. The older-system Wasm fallback remains capability-gated: threaded Wasm requires shared memory, isolation, and relaxed SIMD. No local HTTP server, hosting change, broad IPC permission, or weaker CSP was introduced. The earlier WebKit investigation is historical context, not a shipping dependency: see [the isolation diagnosis](UX_REVIEW.md#isolation-diagnosis--2026-09-06).
+- Native CPU processing uses at most four threads, reserving CPU capacity for the app. It does not need WebView cross-origin isolation. The older-system Wasm fallback remains capability-gated: threaded Wasm requires shared memory, isolation, and relaxed SIMD. No local HTTP server, hosting change, broad IPC permission, or weaker CSP was introduced. The custom-scheme WebKit isolation limitation is not a native-runtime dependency; do not introduce a loopback server to bypass it.
 - Model-backed upscaling still requires packaged offline acceptance and human output-quality review for the release candidate.
 - WebGPU processing requires supported JSPI GPU-to-CPU pixel readback in the bundled LiteRT 2.5.2 runtime, not merely `navigator.gpu`. The app detects that capability, loads the corresponding bundled runtime variant, and selects Wasm CPU processing when it is absent. The probe reports the actual fallback. No cloud or replacement model is used.
 - Local AI tools support app-owned static images, not GIFs, videos, external provider references, or missing files.
@@ -63,37 +63,32 @@ Use the original when lettering, logos, or exact facial detail must remain faith
 
 ## Packaged-app acceptance
 
-Native LiteRT implementation acceptance on 2026-09-06 passed actual packaged inference, live cancellation/retry, navigation and typing during inference, transparency retention, explicit oversize rejection, source/output hash verification, and a full 512px → 2048px photograph save. The final notarized ux.11 repeated that photograph in 22.7s processing with identical output pixels; the earlier small-fixture and large-image comparisons remain in the local evidence archive. These are local measurements, not broad hardware performance claims. Full source gates passed; the exact packaged helper also passed network-denied inference with reference-identical pixels. Raw captures, fixture databases, and test artifacts are retained locally under `artifacts/litert-upscale-2026-09-06/`, not published with the source.
+[Project status](PROJECT_STATUS.md#evidence-boundaries) owns the latest evidence
+and remaining gates; [release operations](RELEASE_OPERATIONS.md) owns signed-build and
+updater proof. Do not treat earlier candidate results as acceptance on a new Mac.
 
-The clock-related distribution blocker was resolved after the user authorized and authenticated the macOS time correction. A separate rebuild of ux.11 passed Developer ID signing, Apple notarization, stapling, Gatekeeper, deep/strict nested signature checks, and packaged launch smoke. The exact notarized helper also passed network-denied inference and cancellation checks; the artifact identity, submission ID and measurements are in the linked evidence. No security or host-network setting was weakened and no public or installed app was replaced. Labs was saved off again after testing. Clean/older-Mac, full-app offline, and operator quality acceptance remain open.
+Use the exact signed/stapled app, not Vite. Import representative fixtures with
+the native file picker so macOS grants access to the selected files.
 
-The subsequent packaged recovery check restored all 30 media files byte-for-byte, preserved derivative metadata, restored a changed preference, and created its automatic safety backup. The exported support log contained none of the tested image names, source/output hashes, pixels, or AI model metadata. Twenty-seven targeted runtime/fallback/cancellation tests also passed. The preliminary visual review and its comparison images are in the same implementation evidence; these checks do not substitute for a clean/older-Mac run or human output-quality approval.
+1. Record app version, Mac chip, macOS version, and original input hashes. Enable Labs.
+2. For full-app offline acceptance, use an approved isolated test machine/VM or an app-specific method proven to cover both the native app and WebKit networking. Both uncached controls must fail. Never disable host networking while other apps need it, or globally block the shared WebKit executable. Changing all active network interfaces requires separate approval.
+3. Run the optional runtime probe and record the actual native/Wasm path or error.
+4. Upscale a transparent PNG and representative photographs within the 512px limit; check the 4× output dimensions and derivative metadata.
+5. Test progress, cancellation, retry, navigation/typing during inference, and no partial derivative after cancellation.
+6. Verify unchanged originals and source/output hashes. Review faces, text, and fine detail at intended display size; discard misleading output.
+7. Exercise preflight, crop suggestions, property search, and editable/discardable alt-text drafts.
+8. Back up and restore originals, derivatives, and metadata; verify the safety copy and support-export redaction.
+9. Turn Labs off again when finished and record pass/fail/not tested for each boundary.
 
-The nondisruptive full-app offline attempt is **not accepted**: launching ux.11 with `sandbox-exec` network denial blocked its native download command, but an uncached external thumbnail still loaded through WKWebView. Cold bundled upscaling succeeded in that session, which validates native-network-denied processing only. Do not treat this profile, the app's online status, or a lack of observed connections as proof that every process is offline.
+**Known failed isolation approaches (2026-09-06):** a whole-app
+`sandbox-exec` profile and LuLu 4.5.1 main-process/process-tree rules blocked native
+downloads but allowed fresh WKWebView thumbnails. Those temporary rules were
+removed. Neither approach is full-app offline evidence. Wi-Fi off alone also
+does not establish isolation when another interface is active.
 
-Local native-debug checks on 2026-09-05 verified preflight, empty/matching searches, alt-text editing/retention/discard/replacement protection, missing-file error recovery, and a separate square crop with verified source/output hashes. These deterministic helper checks do not close the model-backed or packaged/offline gate. See [UX_REVIEW.md](UX_REVIEW.md#local-media-helper-follow-through).
-
-The unchanged signed ux.7 candidate subsequently passed live CPU cancellation without saving output, retry without restart, navigation and composer input during inference, and a verified 32px → 128px derivative. The successful retry measured 155.4s processing for one tile, with a 2105ms maximum UI timer gap: functional interaction passed, but performance is not polished. Initial native-control failures remain recorded, and this small icon does not establish representative quality or offline operation. Labs was saved off in the isolated test workspace. Measurements, output hashes, limitations, and next checks are maintained in [the background processing follow-through](UX_REVIEW.md#background-model-processing-follow-through).
-
-The packaged CSP must include `script-src 'self' 'wasm-unsafe-eval'` for bundled LiteRT WebAssembly. This permits WebAssembly compilation without granting JavaScript `unsafe-eval`, remote scripts, or remote model connections, as described in [Tauri's CSP guidance](https://v2.tauri.app/security/csp/). The first isolated signed UX candidate exposed this missing permission; source asset checks alone had not caught it.
-
-Canvas inputs request anonymous CORS before loading from Tauri's app-owned media asset protocol. This uses the existing app-origin permission and keeps the asset scope at `$APPDATA/media/**`; it does not enable arbitrary file access. Quantized byte output and normalized floating-point output use separate pixel scales.
-
-Use the signed/stapled app, not the Vite development server. Import representative fixtures with the native file picker so macOS can grant access to the selected files:
-
-1. Enable Local AI Media Labs in Settings.
-2. Use an operator-approved isolation method that covers both the native app and its WebKit networking helper. When other apps must remain online, use an app-specific outbound firewall rule; do not disable host networking or block the shared WebKit executable globally. **LuLu 4.5.1 did not meet this requirement on the test Mac:** both its main-process and imported process-and-children rules blocked native downloads but still allowed fresh WebKit thumbnails. Those temporary rules were removed; the source-grounded diagnosis and cleanup are in the linked evidence. Do not reuse that configuration as proof of offline operation. An isolated test machine/VM is another option. Disconnecting all active external interfaces requires separate operator approval; turning off Wi-Fi alone is insufficient if another interface remains active. In every case, both native and WebView uncached network controls must fail before calling it offline.
-3. Run the LiteRT capability probe and record WebGPU, Wasm fallback, or the exact error.
-4. Upscale representative small, medium, and large images.
-5. Test progress, cancellation, retry, and cleanup of partial output.
-6. Confirm the original remains unchanged.
-7. Confirm every derivative records source media, runtime/model, dimensions, operation, and hashes.
-8. Exercise preflight, crop suggestions, local search, and alt-text drafting.
-9. Review image quality and alt-text usefulness manually.
-10. Back up and restore the resulting originals, derivatives, and metadata.
-11. Export system logs and confirm local-AI data is redacted as designed.
-
-The release gate remains open until this workflow passes in the current packaged candidate.
+The scripted native-helper check below is intentionally narrower. Human quality,
+older-system execution, accessibility, and representative data recovery require
+their own outcomes.
 
 ## Runtime and model policy
 
@@ -102,6 +97,21 @@ Native LiteRT CPU is the preferred execution path for the bundled upscaler on Ap
 The Rust boundary accepts only a session ID and fixed-size RGB tile, resolves helper/model paths inside the app bundle, verifies the model SHA-256 against the canonical manifest, and clears the helper environment. One session can run at a time. Each compile/tile operation has a 60-second watchdog; cancellation kills and reaps the helper without waiting for inference. Window destruction closes it, and parent-death detection prevents orphaned work. Only the existing derivative-save command writes media. Native metadata is recorded as `litert_native_2.1.6` / `native_cpu`; historical Wasm derivatives retain their original runtime labels.
 
 Build-time setup is `npm run local-ai:native:prepare`, already part of normal desktop dev/build hooks. It downloads checksum-pinned official wheel/SDK archives once, caches verified archives, extracts only the CPU library, compiles the helper, and emits a package receipt. End users install nothing extra. `npm run local-ai:native:check` rejects stale/missing assets. Dependency notices ship with the bundle; native library updates require reviewing its actual deployment target and dependency notices, not relying on a wheel filename.
+
+### WebKit compatibility constraints
+
+The bundled Wasm path needs only `script-src 'self' 'wasm-unsafe-eval'` for
+WebAssembly compilation; JavaScript `unsafe-eval`, remote scripts/models, and
+broad filesystem permissions remain disallowed. Image inputs request anonymous
+CORS before loading the app-owned media asset protocol, whose scope stays at
+`$APPDATA/media/**`. Quantized-byte and normalized-float outputs use explicit
+typed-array conversion rather than value heuristics.
+
+LiteRT's GPU readback requires JSPI, not merely `navigator.gpu`. The worker loads
+the reviewed bundled glue/Wasm paths through the existing runtime owner. The
+custom `tauri://localhost` scheme did not expose shared memory/isolation in the
+tested WKWebView, even with COOP/COEP; native CPU avoids that dependency. Retain
+these compatibility regression tests when upgrading the runtime.
 
 Every added model must record:
 
@@ -113,7 +123,7 @@ Every added model must record:
 - Runtime and supported execution paths.
 - Known quality and bias limits.
 
-Update `../THIRD_PARTY_NOTICES.md` and the model manifest before committing new weights.
+Update [Third-party notices](THIRD_PARTY_NOTICES.md) and the model manifest before committing new weights.
 
 ## Verification commands
 
@@ -132,7 +142,7 @@ node scripts/benchmark-native-local-ai.mjs --deny-network
 Run the existing inference benchmark against an exact packaged candidate:
 
 ```sh
-npm run local-ai:native:offline -- --app "/absolute/path/Dust Wave Social UX Test.app" --output native-offline.json
+npm run local-ai:native:offline -- --app "/absolute/path/Dust Wave Social.app" --output native-offline.json
 ```
 
 This developer check needs Node and the macOS command-line tools, but no LuLu, administrator privileges, extra network extension, or host-network changes. It does not launch the Social interface, change app data, re-sign the app, or replace the installed version. Without `--app`, it checks the locally prepared helper/model instead of a package.
@@ -141,7 +151,7 @@ The script starts fresh TCP and UDP loopback controls over both IPv4 and IPv6. T
 
 The same sandboxed process family runs the actual bundled helper/model at one and four threads, verifies reference output pixels, interrupts and reaps a running inference, and rejects a malformed frame. It verifies the package signature when `--app` is supplied and reads the model hash from the canonical bundle manifest. Helper/model hashes are checked again after execution. The JSON report records the controls and hashes and exits nonzero on failure. Parent loopback controls prove that this boundary is not host-wide; they are not a claim that an external website is reachable.
 
-**Scope: native LiteRT helper only.** The report deliberately records `full_app_offline_accepted: false`. It does not cover WKWebView, the Rust-to-helper integration, image import/save, multi-tile processing, UI responsiveness, or older-Mac Wasm fallback. Those retain the packaged acceptance steps above. Wrapping the whole app in the same profile does not isolate its launchd-owned WebKit networking helper; removing network entitlements from a separately re-signed sandbox copy also failed to produce a usable interface on the test Mac. Neither method is a full-app offline pass. LuLu 4.5.1's root process-ancestry path skips the responsible-process lookup when its parent PID starts at -1; [the vendor source](https://github.com/objective-see/LuLu/blob/v4.5.1/LuLu/Shared/utilities.m#L125-L240) and read-only inspection of the installed binary agreed. The local evidence archive retains the detailed diagnosis and machine-readable test report.
+**Scope: native LiteRT helper only.** The report deliberately records `full_app_offline_accepted: false`. It does not cover WKWebView, the Rust-to-helper integration, image import/save, multi-tile processing, UI responsiveness, or older-Mac Wasm fallback. Those retain the packaged acceptance steps above. Wrapping the whole app in the same profile does not isolate its launchd-owned WebKit networking helper; removing network entitlements from a separately re-signed sandbox copy also failed to produce a usable interface on the test Mac. Neither method is a full-app offline pass. LuLu 4.5.1's root process-ancestry path skips the responsible-process lookup when its parent PID starts at -1; [the vendor source](https://github.com/objective-see/LuLu/blob/v4.5.1/LuLu/Shared/utilities.m#L125-L240) and read-only inspection of the installed binary agreed. Superseded diagnostic files were moved to Trash during cleanup; current release-native reports are retained with the release assets.
 
 Support procedures are in [SUPPORT_RUNBOOK.md](SUPPORT_RUNBOOK.md). Product-risk requirements are in [BEST_PRACTICES.md](BEST_PRACTICES.md).
 

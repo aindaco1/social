@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { gitRemoteRepoSlug } from './release-repo.js';
+import { RELEASE_OPERATIONS_PATH, releaseReadinessDocumentationReady } from './lib/release-readiness-docs.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
@@ -80,7 +81,7 @@ function currentNotarizationId() {
         return explicit;
     }
 
-    const planPath = path.join(projectRoot, 'docs', 'MVP_LAUNCH_PLAN.md');
+    const planPath = path.join(projectRoot, RELEASE_OPERATIONS_PATH);
 
     if (!existsSync(planPath)) {
         return '';
@@ -98,7 +99,7 @@ function documentedNotarizationAccepted(submissionId) {
     }
 
     const sources = [
-        fileText('docs/MVP_LAUNCH_PLAN.md'),
+        fileText(RELEASE_OPERATIONS_PATH),
     ];
     const idPattern = submissionId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -143,7 +144,7 @@ function packageHasDependency(name) {
 function localAiMediaCodeReady() {
     const desktopSource = fileText('resources/desktop/src/App.vue');
     const databaseSource = fileText('src-tauri/src/db/mod.rs');
-    const noticesSource = fileText('THIRD_PARTY_NOTICES.md');
+    const noticesSource = fileText('docs/THIRD_PARTY_NOTICES.md');
 
     return packageHasDependency('@litertjs/core')
         && /(?:LiteRT|local AI|localAi|ai media)/i.test(desktopSource)
@@ -174,19 +175,6 @@ function localAiModelWeightsReady() {
     ]);
 
     return result.status === 0;
-}
-
-function releaseNotesAndRollbackReady() {
-    const scriptSource = fileText('scripts/generate-mvp-release-notes.mjs');
-    const notesSource = fileText('docs/MVP_LAUNCH_PLAN.md');
-    const submissionId = currentNotarizationId();
-
-    return /Rollback Plan/.test(scriptSource)
-        && /## Current Local Release Artifacts/.test(notesSource)
-        && /## Rollback Plan/.test(notesSource)
-        && /MVP readiness:\s+\d+\s+ready,\s+\d+\s+blocked,\s+\d+\s+manual/.test(notesSource)
-        && /Updater URL:/.test(notesSource)
-        && (!submissionId || notesSource.includes(submissionId));
 }
 
 function localReleaseArtifactSetReady() {
@@ -354,9 +342,9 @@ record(
 );
 
 record(
-    releaseNotesAndRollbackReady() ? 'ready' : 'manual',
-    'Release notes and rollback draft',
-    'run npm run mvp:release:notes after rebuilding release artifacts',
+    releaseReadinessDocumentationReady(projectRoot) ? 'ready' : 'manual',
+    'Local readiness report and release/rollback runbook',
+    `run npm run mvp:release:notes for an ignored checkout snapshot; durable procedure is in ${RELEASE_OPERATIONS_PATH}`,
 );
 
 record(
@@ -382,7 +370,7 @@ record(
 record(
     'manual',
     'Local AI packaged-app offline model probe and reviewed output acceptance',
-    'requires signed/stapled app test with network disabled and operator review of generated derivatives',
+    'requires signed/stapled app, approved native/WebKit network isolation, and operator review of generated derivatives',
 );
 
 for (const label of [

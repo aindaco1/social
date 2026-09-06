@@ -11,6 +11,7 @@ import {
     redactPath,
 } from './apple-auth.js';
 import { gitRemoteRepoSlug } from './release-repo.js';
+import { RELEASE_OPERATIONS_PATH, releaseReadinessDocumentationReady } from './lib/release-readiness-docs.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
@@ -84,16 +85,6 @@ function mediaStagingScheduledCleanupReady() {
         && /cleanupExpired\(env\)/.test(workerSource)
         && /crons\s*=\s*\[/.test(templateConfig)
         && /triggers:\s*\{[\s\S]*crons:\s*cronSchedules/.test(configGenerator);
-}
-
-function releaseNotesGeneratorReady() {
-    const generatorSource = fileText('scripts/generate-mvp-release-notes.mjs');
-    const notesSource = fileText('docs/MVP_LAUNCH_PLAN.md');
-
-    return /MVP_RELEASE_NOTES_START/.test(generatorSource)
-        && /Rollback Plan/.test(generatorSource)
-        && /## Current Local Release Artifacts/.test(notesSource)
-        && /## Rollback Plan/.test(notesSource);
 }
 
 function gitIgnores(relativePath) {
@@ -287,9 +278,9 @@ record(
     'Worker scheduled handler and Wrangler cron config'
 );
 record(
-    releaseNotesGeneratorReady() ? 'ok' : 'warn',
-    'MVP release notes and rollback draft',
-    'docs/MVP_LAUNCH_PLAN.md'
+    releaseReadinessDocumentationReady(projectRoot) ? 'ok' : 'warn',
+    'Local readiness report and release/rollback runbook',
+    `artifacts/release-readiness.md (generated); ${RELEASE_OPERATIONS_PATH} (durable)`
 );
 
 const hasRepoSecret = (name) => repoSecrets.names.has(name);

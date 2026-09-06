@@ -90,7 +90,7 @@ Silicon-only; Intel/universal distribution is not included.
 
 - First local-first Apple Silicon macOS desktop release.
 - Current capabilities and limits are documented in `docs/FEATURES.md`.
-- Current launch gates and artifact state are documented in `docs/MVP_LAUNCH_PLAN.md`.
+- Current launch gates and artifact state are documented in `docs/RELEASE_OPERATIONS.md`.
 - The release pipeline signs and notarizes the app and DMG, staples both artifacts, verifies the drag-to-Applications layout, signs updater archives, validates release-tag/version alignment, and smokes the updater against the published release.
 
 The entries below are the retained Mixpost Lite release history.

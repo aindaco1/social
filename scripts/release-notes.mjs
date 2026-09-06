@@ -13,7 +13,7 @@ export function extractReleaseNotes(changelog, version) {
 }
 
 export function releaseNotes(version) {
-    return extractReleaseNotes(readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8'), version);
+    return extractReleaseNotes(readFileSync(new URL('../docs/CHANGELOG.md', import.meta.url), 'utf8'), version);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

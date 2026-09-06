@@ -194,7 +194,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: src-tauri/target/ffmpeg-lgpl
-          key: ffmpeg-lgpl-8.1.2-macos-26-aarch64-${{ hashFiles('scripts/build-ffmpeg-lgpl-sidecars.mjs', 'THIRD_PARTY_NOTICES.md') }}
+          key: ffmpeg-lgpl-8.1.2-macos-26-aarch64-${{ hashFiles('scripts/build-ffmpeg-lgpl-sidecars.mjs', 'docs/THIRD_PARTY_NOTICES.md') }}
 
       - name: Build LGPL FFmpeg sidecars
         if: github.ref_type == 'tag' || inputs.build_media_sidecars == 'true'

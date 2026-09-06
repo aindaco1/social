@@ -7,22 +7,22 @@ import { serviceDefinitions } from '../resources/desktop/src/providerSetup.js';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
-const excludedDirectories = new Set(['.git', 'dist', 'node_modules', 'target', 'vendor']);
+const excludedDirectories = new Set(['.git', 'artifacts', 'dist', 'node_modules', 'target', 'vendor']);
 const headingExemptions = new Set(['LICENSE.md']);
 const requiredDocuments = [
-    'CHANGELOG.md',
     'LICENSE.md',
     'README.md',
     'SECURITY.md',
-    'THIRD_PARTY_NOTICES.md',
     'docs/ARCHITECTURE.md',
     'docs/BEST_PRACTICES.md',
+    'docs/CHANGELOG.md',
     'docs/FEATURES.md',
-    'docs/GIF_PROVIDER_DECISION.md',
     'docs/LOCAL_AI.md',
-    'docs/MVP_LAUNCH_PLAN.md',
+    'docs/PROJECT_STATUS.md',
     'docs/PROVIDER_SETUP.md',
+    'docs/RELEASE_OPERATIONS.md',
     'docs/SUPPORT_RUNBOOK.md',
+    'docs/THIRD_PARTY_NOTICES.md',
     'docs/USER_FLOWS.md',
     'src-tauri/binaries/README.md',
     'workers/media-staging/README.md',
@@ -34,7 +34,13 @@ const retiredDocuments = [
     'MIXPOST_PARITY_AUDIT.md',
     'RELEASE.md',
     'docs/LITERT_MVP_EVALUATION.md',
+    'docs/UX_REVIEW.md',
+    'docs/GIF_PROVIDER_DECISION.md',
+    'docs/MVP_LAUNCH_PLAN.md',
 ];
+// These names remain valid inside docs/; reject duplicate root copies without
+// treating links to their new locations as retired-document references.
+const relocatedRootDocuments = ['CHANGELOG.md', 'THIRD_PARTY_NOTICES.md'];
 const errors = [];
 
 function relative(filePath) {
@@ -68,7 +74,7 @@ for (const document of requiredDocuments) {
     }
 }
 
-for (const document of retiredDocuments) {
+for (const document of [...retiredDocuments, ...relocatedRootDocuments]) {
     if (existsSync(path.join(projectRoot, document))) {
         errors.push(`Retired document was reintroduced: ${document}`);
     }

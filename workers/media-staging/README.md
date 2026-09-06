@@ -18,7 +18,7 @@ Stage and cleanup requests accept the primary `MEDIA_STAGING_TOKEN`, the optiona
 
 Required deployment inputs:
 
-- `MEDIA_STAGING_TOKEN`: Worker secret and matching desktop Keychain value.
+- `MEDIA_STAGING_TOKEN`: reusable operator/Worker secret. Ordinary desktop users receive a separate device credential through one-use pairing; do not distribute the operator token to them.
 - `MEDIA_STAGING_BUCKET_NAME`: R2 bucket name.
 - `PUBLIC_MEDIA_BASE_URL`: HTTPS Worker origin.
 - `CLOUDFLARE_ACCOUNT_ID` and a deployment token for Wrangler or GitHub Actions.

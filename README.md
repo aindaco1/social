@@ -6,29 +6,15 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-[Version 0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10) is published
-on the official updater channel for Apple Silicon macOS. It includes the UX
-improvements and opt-in native LiteRT upscaling described in [CHANGELOG.md](CHANGELOG.md),
-with signed, notarized, stapled app/DMG bundles and signed updater assets.
-Version 0.1.9 is the immediate rollback baseline.
+[Social 0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10) is the
+official Apple Silicon macOS release, including the UX improvements and opt-in
+native LiteRT upscaling. The signed 0.1.9 → 0.1.10 updater/relaunch path passed;
+broader machine, provider, accessibility, and image-quality acceptance remains open.
 
-The release workflow installed the public signed update over a staged public
-0.1.9 app and verified automatic relaunch as 0.1.10 in a new process. Independent
-downloads verified all five public asset digests, bundle trust, the live updater
-feed, and native-helper offline inference. Clean/older-Mac execution, full-app
-offline isolation, human output-quality approval, live-provider acceptance, and
-representative operator-data/Keychain survival remain open. Follow the
-[other-Mac testing checklist](docs/MVP_LAUNCH_PLAN.md#testing-on-another-mac).
-
-Versions 0.1.0 through 0.1.2 require one manual installation of a 0.1.3-or-newer DMG because their in-app updater cannot read Tauri's private resource identifier.
-
-Run the current readiness audit instead of copying status counts into another document:
-
-```sh
-npm run mvp:launch:readiness
-```
-
-The launch source of truth is [docs/MVP_LAUNCH_PLAN.md](docs/MVP_LAUNCH_PLAN.md). It records the current artifact state, manual acceptance gates, release commands, and rollback procedure.
+Start with [Project status and concrete next steps](docs/PROJECT_STATUS.md).
+[Release operations](docs/RELEASE_OPERATIONS.md) records publication evidence,
+build/update testing, and rollback. Do not infer public release failure from absent
+local build outputs after cleanup.
 
 ## Product capabilities
 
@@ -89,27 +75,34 @@ composer test
 
 - [Features and limits](docs/FEATURES.md)
 - [User flows and UX regression matrix](docs/USER_FLOWS.md)
-- [September UX review and Mixpost comparison](docs/UX_REVIEW.md)
+- [Current state, acceptance gaps, and next steps](docs/PROJECT_STATUS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Provider integration setup](docs/PROVIDER_SETUP.md)
-- [MVP launch and release operations](docs/MVP_LAUNCH_PLAN.md)
+- [Release operations](docs/RELEASE_OPERATIONS.md)
 - [Local AI media](docs/LOCAL_AI.md)
-- [GIF provider decision](docs/GIF_PROVIDER_DECISION.md)
 - [Product and ethical safeguards](docs/BEST_PRACTICES.md)
 - [Support runbook](docs/SUPPORT_RUNBOOK.md)
 - [Security policy](SECURITY.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
-- [Changelog](CHANGELOG.md)
+- [Third-party notices](docs/THIRD_PARTY_NOTICES.md)
+- [Changelog](docs/CHANGELOG.md)
+
+Keep only the project entry point, license, and security reporting policy at the
+repository root. Maintained guides, release history, and dependency notices live
+in `docs/`; component READMEs stay alongside their code. Each document has one
+purpose—link to its authoritative content instead of copying it.
 
 Validate the documentation structure and relative links after changing docs:
 
 ```sh
 npm run docs:check
-npm run mvp:release:notes:check
 ```
+
+For an ephemeral local release-readiness snapshot, run `npm run mvp:release:notes`
+and then `npm run mvp:release:notes:check`. The output is ignored under
+`artifacts/release-readiness.md`, not committed documentation.
 
 ## Project boundaries
 
 The MVP targets Apple Silicon macOS. TikTok direct API publishing, richer Instagram formats, Facebook Groups, Intel/universal builds, cloud sync, and team collaboration are not part of the current release scope.
 
-Mixpost-originated PHP code remains MIT licensed under [LICENSE.md](LICENSE.md). Dust Wave release bundles must also comply with the notices and redistribution requirements in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Mixpost-originated PHP code remains MIT licensed under [LICENSE.md](LICENSE.md). Dust Wave release bundles must also comply with the notices and redistribution requirements in [Third-party notices](docs/THIRD_PARTY_NOTICES.md).

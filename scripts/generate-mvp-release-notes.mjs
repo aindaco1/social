@@ -13,14 +13,25 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { gitRemoteRepoSlug } from './release-repo.js';
+import { LOCAL_RELEASE_READINESS_PATH, RELEASE_OPERATIONS_PATH } from './lib/release-readiness-docs.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, '..');
 const args = process.argv.slice(2);
 const check = args.includes('--check');
-const outputPath = path.resolve(projectRoot, argValue('--output') || 'docs/MVP_LAUNCH_PLAN.md');
+const outputPath = path.resolve(projectRoot, argValue('--output') || LOCAL_RELEASE_READINESS_PATH);
 const sectionStart = '<!-- MVP_RELEASE_NOTES_START -->';
 const sectionEnd = '<!-- MVP_RELEASE_NOTES_END -->';
+
+// Generated machine state is disposable. An explicit override may select another
+// untracked report path, but must not replace durable source documentation—even
+// newly created or relocated guides that have not been staged yet.
+const relativeOutput = path.relative(projectRoot, outputPath);
+const trackedOutput = run('git', ['ls-files', '--error-unmatch', '--', relativeOutput]);
+if (trackedOutput.status === 0 || relativeOutput === 'docs' || relativeOutput.startsWith(`docs${path.sep}`)) {
+    console.error('Refusing to write a local readiness snapshot into a tracked file or maintained documentation path. Use artifacts/release-readiness.md or another untracked output path outside docs/.');
+    process.exit(1);
+}
 
 function argValue(name) {
     const index = args.indexOf(name);
@@ -116,7 +127,7 @@ function currentNotarizationId() {
         return explicit;
     }
 
-    const plan = readText('docs/MVP_LAUNCH_PLAN.md');
+    const plan = readText(RELEASE_OPERATIONS_PATH);
     const match = plan.match(/Apple accepted (?:DMG )?submission `([0-9a-f-]{36})`/i);
 
     return match?.[1] || '';
@@ -232,34 +243,21 @@ Manual acceptance still required:
 
 ${manualItems}
 
-## Rollback Plan
+## Next checks
 
-1. Keep this signed/stapled DMG and the previous known-good DMG available before publishing the GitHub Release.
-2. If a bad release is detected, pause scheduled publishing by quitting Dust Wave Social on affected Macs.
-3. Preserve support logs and create a backup from System before uninstalling or downgrading.
-4. Remove the bad GitHub Release assets or mark the release as draft so updater clients stop discovering it.
-5. Publish or restore the last known-good \`latest.json\`, updater archive, updater signature, and DMG assets.
-6. Install the previous known-good DMG on affected Macs and verify Gatekeeper opens it.
-7. Reopen Dust Wave Social, verify app data loads, and reconnect provider accounts only if keychain credentials were intentionally removed.
-8. If the bad release changed local data shape, restore from the last known-good Dust Wave backup instead of manually editing SQLite.
-9. If provider tokens or broker credentials may be compromised, revoke them at the provider or broker before reconnecting accounts.
-10. Record the incident, owner, customer impact, mitigation, and ship/no-ship decision in the release notes or private issue tracker.
+This report describes local checkout artifacts, not the availability or acceptance
+of the public release. Missing artifacts after cleanup are expected.
 
-## Publish Checklist
-
-- Run \`npm run desktop:release:artifact-check -- --require-updater --require-stapled\`.
-- Run \`npm run desktop:smoke:launch\`.
-- Run \`npm run mvp:launch:readiness\` and confirm only expected manual acceptance items remain.
-- Complete live provider credential/account acceptance.
-- Complete clean-Mac Gatekeeper install.
-- Complete operator updater installation, relaunch, and app-data acceptance from the installed rollback version.
-- Finalize provider, backup, support, and release owners.
-- Publish only signed, stapled, checksum-recorded artifacts.
+Use the maintained release/build/updater/rollback procedure in
+[Release operations](<${path.relative(path.dirname(outputPath), path.join(projectRoot, RELEASE_OPERATIONS_PATH)).split(path.sep).join('/')}>)
+and the current priorities in
+[Project status](<${path.relative(path.dirname(outputPath), path.join(projectRoot, 'docs/PROJECT_STATUS.md')).split(path.sep).join('/')}>).
+Do not copy this machine snapshot into source documentation.
 ${sectionEnd}`;
 }
 
 const content = renderNotes();
-const existing = existsSync(outputPath) ? readFileSync(outputPath, 'utf8') : '';
+const existing = existsSync(outputPath) ? readFileSync(outputPath, 'utf8') : '# Local release readiness\n';
 
 function replaceSection(source, replacement) {
     const start = source.indexOf(sectionStart);

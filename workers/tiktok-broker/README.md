@@ -2,14 +2,15 @@
 
 This Worker keeps TikTok OAuth client secrets, refresh tokens, and access tokens out of the desktop app. Dust Wave Social stores only an opaque broker connection credential in the local keychain.
 
-## Current Dust Wave Scaffold
+## Deployment boundary
 
-- Worker URL: `https://dustwave-tiktok-broker.jogo.workers.dev`
-- Health check: `https://dustwave-tiktok-broker.jogo.workers.dev/api/health`
-- D1 database: created.
-- Initial migration: applied.
-- Generated secrets already stored in local `Apple Auth`, GitHub secrets, and Cloudflare Worker secrets: `TOKEN_ENCRYPTION_KEY`, `BROKER_ADMIN_TOKEN`.
-- Required before live TikTok acceptance: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, and TikTok OAuth callback registration. GitHub Actions deployment also requires a Cloudflare token with Workers and D1 permissions.
+This is the operator runbook for provisioning and maintaining the broker, not a
+claim that its current credentials, scopes, or provider review are accepted.
+The configured Dust Wave service is
+`https://dustwave-tiktok-broker.jogo.workers.dev`; use its `/api/health` endpoint
+for a non-secret health check. Recheck live deployment state before making changes.
+Current acceptance belongs in [Project status](../../docs/PROJECT_STATUS.md);
+desktop portal values belong in [Provider Setup](../../docs/PROVIDER_SETUP.md#tiktok).
 
 ## Endpoints
 
@@ -67,7 +68,7 @@ This Worker keeps TikTok OAuth client secrets, refresh tokens, and access tokens
    https://your-worker-or-custom-domain/api/tiktok/oauth/callback
    ```
 
-9. In Dust Wave Social, set Services -> TikTok -> Broker URL to the Worker origin, for example:
+9. In Dust Wave Social, set Connections > Provider setup > TikTok > Broker URL to the Worker origin, for example:
    ```text
    https://dustwave-tiktok-broker.your-subdomain.workers.dev
    ```
@@ -116,7 +117,7 @@ npm run tiktok:broker:test
 
 The MVP scopes are `user.info.basic,user.info.stats,video.list`. Direct publishing still requires TikTok approval for `video.upload` or `video.publish`.
 
-Desktop provider limits and launch acceptance are documented in [../../docs/FEATURES.md](../../docs/FEATURES.md) and [../../docs/MVP_LAUNCH_PLAN.md](../../docs/MVP_LAUNCH_PLAN.md).
+Desktop provider limits and launch acceptance are documented in [../../docs/FEATURES.md](../../docs/FEATURES.md) and [../../docs/PROJECT_STATUS.md](../../docs/PROJECT_STATUS.md).
 
 ## Revocation
 
