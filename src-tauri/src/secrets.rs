@@ -3,6 +3,7 @@ use keyring::Entry;
 use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
 struct ServiceCredentialDefinition {
@@ -22,6 +23,7 @@ struct ServiceCredentialFieldDefinition {
 #[derive(Debug)]
 pub enum SecretError {
     Keychain(String),
+    NamespaceUnavailable,
     KeychainUnavailable,
     UnknownField {
         service: String,
@@ -42,6 +44,9 @@ impl Display for SecretError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Keychain(error) => write!(formatter, "keychain error: {error}"),
+            Self::NamespaceUnavailable => {
+                write!(formatter, "credential namespace is not initialized")
+            }
             Self::KeychainUnavailable => write!(
                 formatter,
                 "Keychain access is disabled for this unsigned local debug build; use npm run desktop:dev with a Developer ID identity or provide credentials through the documented environment variables"
@@ -70,8 +75,33 @@ impl Error for SecretError {}
 
 const CLIENT_ID: &str = "client_id";
 const CLIENT_SECRET: &str = "client_secret";
-const KEYCHAIN_SERVICE: &str = "com.dustwave.social";
+static KEYCHAIN_SERVICE: OnceLock<String> = OnceLock::new();
 const KEYCHAIN_MODE_ENV: &str = "DUSTWAVE_KEYCHAIN_MODE";
+
+pub fn initialize_namespace(identifier: &str) -> Result<(), SecretError> {
+    initialize_namespace_with(&KEYCHAIN_SERVICE, identifier)
+}
+
+fn initialize_namespace_with(
+    namespace: &OnceLock<String>,
+    identifier: &str,
+) -> Result<(), SecretError> {
+    if identifier.trim().is_empty() {
+        return Err(SecretError::NamespaceUnavailable);
+    }
+    // Use the same identity as Tauri's app-data directory. Alternate bundles must
+    // never fall back to the production app's credentials.
+    namespace
+        .set(identifier.to_string())
+        .map_err(|_| SecretError::Keychain("credential namespace is already initialized".into()))
+}
+
+fn keychain_service(namespace: &OnceLock<String>) -> Result<&str, SecretError> {
+    namespace
+        .get()
+        .map(String::as_str)
+        .ok_or(SecretError::NamespaceUnavailable)
+}
 
 const SERVICE_CREDENTIALS: &[ServiceCredentialDefinition] = &[
     ServiceCredentialDefinition {
@@ -362,8 +392,11 @@ fn keychain_access_enabled_with(mode: Option<&str>, debug_build: bool) -> bool {
 }
 
 fn keychain_entry(service: &str, field: &str) -> Result<Entry, SecretError> {
-    Entry::new(KEYCHAIN_SERVICE, &keychain_user(service, field))
-        .map_err(|error| SecretError::Keychain(error.to_string()))
+    Entry::new(
+        keychain_service(&KEYCHAIN_SERVICE)?,
+        &keychain_user(service, field),
+    )
+    .map_err(|error| SecretError::Keychain(error.to_string()))
 }
 
 fn keychain_user(service: &str, field: &str) -> String {
@@ -385,6 +418,35 @@ fn resolve_env(names: &[&'static str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_namespace_follows_the_app_identity_without_production_fallback() {
+        let production = OnceLock::new();
+        let candidate = OnceLock::new();
+        initialize_namespace_with(&production, "com.dustwave.social").unwrap();
+        initialize_namespace_with(&candidate, "com.dustwave.social.uxcandidate").unwrap();
+        assert_eq!(
+            keychain_service(&production).unwrap(),
+            "com.dustwave.social"
+        );
+        assert_eq!(
+            keychain_service(&candidate).unwrap(),
+            "com.dustwave.social.uxcandidate"
+        );
+        assert!(initialize_namespace_with(&candidate, "com.dustwave.social").is_err());
+        assert_ne!(
+            keychain_service(&production).unwrap(),
+            keychain_service(&candidate).unwrap()
+        );
+    }
+
+    #[test]
+    fn credential_namespace_fails_closed_until_initialized() {
+        let namespace = OnceLock::new();
+        assert!(keychain_service(&namespace).is_err());
+        assert!(initialize_namespace_with(&namespace, " ").is_err());
+        assert!(keychain_service(&namespace).is_err());
+    }
 
     #[test]
     fn reports_service_credential_status_without_exposing_values() {

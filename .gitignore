@@ -20,6 +20,8 @@ src-tauri/tauri.updater.generated.conf.json
 src-tauri/target
 src-tauri/binaries/ffmpeg-*
 src-tauri/binaries/ffprobe-*
+src-tauri/binaries/social-litert-*
+src-tauri/native-runtime/
 src-tauri/binaries/SIDECARS.local.json
 workers/**/.dev.vars
 workers/**/.wrangler
@@ -27,4 +29,6 @@ workers/**/.wrangler/
 workers/tiktok-broker/wrangler.generated.jsonc
 workers/media-staging/wrangler.generated.jsonc
 .DS_Store
+# Local acceptance captures, fixture databases, logs and unpublished test bundles.
+/artifacts/
 CLAUDE.md

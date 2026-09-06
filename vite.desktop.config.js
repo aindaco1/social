@@ -6,6 +6,10 @@ import path from 'path';
 export default defineConfig({
     root: 'resources/desktop',
     base: './',
+    worker: {
+        format: 'iife',
+        rollupOptions: { output: { inlineDynamicImports: true } },
+    },
     plugins: [
         vue(),
         tailwindcss(),

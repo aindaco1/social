@@ -35,13 +35,24 @@ Dust Wave Social release builds include the LiteRT.js browser runtime from the `
 - Source: `https://github.com/google-ai-edge/LiteRT/tree/main/litert/js/packages/core`
 - Bundled runtime assets: `resources/desktop/public/litert/wasm/*.js` and `resources/desktop/public/litert/wasm/*.wasm`
 
+## Native LiteRT CPU
+
+Apple Silicon releases also bundle the CPU runtime from Google's official `ai-edge-litert` 2.1.6 macOS wheel. Only `libLiteRt.dylib` is extracted; no Python interpreter, Python wrapper, Metal accelerator, GPU/NPU plugin, or downloaded-at-runtime dependency is shipped. The Social helper is built from `native/local_ai_runner.cpp` using the matching C SDK. The upstream library is unmodified apart from distribution signing.
+
+- Project and source: https://github.com/google-ai-edge/LiteRT/tree/v2.1.6
+- License: Apache-2.0; full license and dependency attribution copies are in `native/licenses/`, packaged as `Contents/Resources/litert-licenses/`.
+- Native minimum: macOS 14.0, verified from the library's Mach-O deployment target. The wheel filename's macOS 12 tag is not used as the runtime availability contract.
+- Exact wheel, SDK, library hashes and download URLs: `scripts/prepare-native-litert.mjs`. Each package includes a `litert-native-build.json` receipt with these pins and the helper source/build hash.
+- CPU dependency notices retained conservatively include XNNPACK, cpuinfo, pthreadpool, FP16, FXdiv, FlatBuffers, Abseil, gemmlowp, ruy, farmhash, toml++, and Eigen. Each copy identifies its source URL and retrieval date. These notices do not imply that every upstream optional accelerator or build dependency is distributed.
+- Unmodified Eigen source and license are available at https://gitlab.com/libeigen/eigen; the retained MPL-2.0 notice explains source-availability rights. Review dependency/notices changes whenever updating the pinned wheel, not just the top-level LiteRT license.
+
 ## Real-ESRGAN-x4plus Model
 
 Dust Wave Social release builds include a quantized TFLite Real-ESRGAN-x4plus model for local-only image upscaling Labs work. The model bundle is validated by `npm run local-ai:models:check`.
 
 - Model: `Real-ESRGAN-x4plus`
 - Use: local image upscaling behind the Local AI Media Labs flag
-- Runtime: LiteRT.js
+- Runtime: native LiteRT CPU on Apple Silicon macOS 14+, LiteRT.js compatibility path otherwise
 - Format: TFLite
 - Precision: `w8a8`
 - Version/source package: `qai-hub-models-v0.57.3`

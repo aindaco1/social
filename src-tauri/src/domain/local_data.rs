@@ -583,6 +583,9 @@ pub struct PostCalendarWindow {
     pub selected_date: String,
     pub start_date: String,
     pub end_date: String,
+    pub timezone: String,
+    pub start_at: String,
+    pub end_at_exclusive: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1019,6 +1022,7 @@ pub struct ReportSnapshot {
     pub tier: Option<String>,
     pub metrics: Vec<ReportMetric>,
     pub audience: AudienceReport,
+    pub latest_observation_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -11,15 +11,30 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
 import Typography from '@tiptap/extension-typography';
 import { EditorContent, useEditor as useTipTapEditor } from '@tiptap/vue-3';
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { COLOR_PALLET_LIST } from '@/Constants/ColorPallet';
 import Div from '@/Extensions/TipTap/Div';
 import dustWaveSquareLogoUrl from '@desktop/assets/dust-wave-square.png';
 import klipyLogoUrl from '@desktop/assets/klipy-logo.svg';
 import ConfirmDialog from '@desktop/components/ConfirmDialog.vue';
+import ReportDataStatus from '@desktop/components/ReportDataStatus.vue';
+import LocalMediaFeedback from '@desktop/components/LocalMediaFeedback.vue';
 import ContextualEditor from '@desktop/components/ContextualEditor.vue';
 import UpdateStatusButton from '@desktop/components/UpdateStatusButton.vue';
 import WorkspaceTabs from '@desktop/components/WorkspaceTabs.vue';
+import { appearance, appearanceOptions } from '@desktop/appearance.js';
+import { vDialogFocus } from '@desktop/dialogFocus.js';
+import { vTabNavigation } from '@desktop/tabNavigation.js';
+import { createDraftReplacementGuard } from '@desktop/draftProtection.js';
+import { calendarDates, formatDateOnly, formatTimestamp as formatWorkspaceTimestamp, localDateTime, parseSchedule, suggestedSchedule } from '@desktop/dateTime.js';
+import { observedNumber, formatObservation } from '@desktop/reporting.js';
+import { paginateItems, queryPostPages } from '@desktop/postQuery.js';
+import { createLocalMediaOperation, LOCAL_MEDIA_SEARCH_PREVIEW_LIMIT, throwIfLocalMediaCanceled as throwIfLocalAiCanceled } from '@desktop/localMediaOperation.js';
+import { localAiOutputRgba } from '@desktop/localAiPixels.js';
+import { LOCAL_AI_UPSCALE_TILE_SIZE, LOCAL_AI_UPSCALE_SCALE_FACTOR, LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE } from '@desktop/localAiConfig.js';
+import { createLocalAiWorkerClient, observeLocalAiResponsiveness } from '@desktop/localAiWorkerClient.js';
+import { createLocalAiSession } from '@desktop/localAiSession.js';
+import { localAiTiles, localAiTileInput } from '@desktop/localAiTiling.js';
 import {
     dustWaveTikTokBrokerUrl,
     providerSetupGuideUrl,
@@ -29,9 +44,12 @@ import {
 const WORKER_POLL_MS = 60 * 1000;
 const MAINTENANCE_POLL_MS = 60 * 60 * 1000;
 const DRAFT_STORAGE_KEY = 'dust-wave-social-composer-draft';
-const timezoneOptions = typeof Intl.supportedValuesOf === 'function'
+const { preference: appearancePreference, persistenceError: appearanceError, setPreference: setAppearance } = appearance;
+const supportedTimezones = typeof Intl.supportedValuesOf === 'function'
     ? Intl.supportedValuesOf('timeZone')
     : ['UTC', 'America/Denver', 'America/Los_Angeles', 'America/New_York', 'Europe/London'];
+// Intl's canonical list omits UTC and can omit valid aliases saved by older versions.
+const timezoneOptions = computed(() => [...new Set(['UTC', ...supportedTimezones, settingsDraft.value.timezone].filter(Boolean))]);
 let workerIntervalId = null;
 let maintenanceIntervalId = null;
 let notificationPermissionRequest = null;
@@ -257,10 +275,7 @@ const reportLoading = ref(false);
 const reportError = ref('');
 const activeReportAudienceIndex = ref(null);
 const todayDate = () => {
-    const date = new Date();
-    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-
-    return date.toISOString().slice(0, 10);
+    return localDateTime(new Date(), settings.value?.timezone || 'UTC').slice(0, 10);
 };
 const formatBytes = (value) => {
     const bytes = Number(value) || 0;
@@ -281,9 +296,7 @@ const formatTimestamp = (value) => {
         return 'Not run yet';
     }
 
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    return formatWorkspaceTimestamp(value, settings.value);
 };
 
 const pluralize = (count, singular, plural = `${singular}s`) => {
@@ -293,11 +306,7 @@ const pluralize = (count, singular, plural = `${singular}s`) => {
 };
 
 const formatNumber = (value) => {
-    if (value === null || value === undefined || Number.isNaN(Number(value))) {
-        return '—';
-    }
-
-    return Number(value).toLocaleString();
+    return formatObservation(value);
 };
 
 const formatDelta = (value) => {
@@ -498,6 +507,7 @@ const accountError = ref('');
 const accountOnboardingCopied = ref('');
 const accountRefreshingUuid = ref('');
 const accountImportingUuid = ref('');
+const accountImportErrors = ref({});
 const accountQueuingUuid = ref('');
 const queueAllImportsRunning = ref(false);
 const mastodonImportSummary = ref(null);
@@ -523,31 +533,35 @@ const localAiRuntime = ref({
     compiled_model: '',
     detail: 'Not checked',
 });
-const localAiBusy = ref(false);
-const localAiError = ref('');
-const localAiResult = ref(null);
+const localAiOperationState = shallowRef(null);
+const localAiOperation = createLocalMediaOperation((state) => { localAiOperationState.value = state; });
+const localAiBusy = computed(() => localAiOperationState.value.busy);
+const localAiError = computed(() => localAiOperationState.value.error);
+const localAiResult = computed(() => localAiOperationState.value.result);
 const localAiSearchQuery = ref('');
 const localAiSearchResults = ref(null);
+const localAiAltTextDraft = ref(null);
 const localAiCropRatio = ref('square');
-let localAiLiteRtLoaded = false;
-let localAiAbortController = null;
-const LOCAL_AI_UPSCALE_TILE_SIZE = 128;
-const LOCAL_AI_UPSCALE_SCALE_FACTOR = 4;
-const LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE = 512;
 const draftBody = ref('');
 const draftAccountIds = ref([]);
 const draftAccountBodies = ref({});
 const activeDraftVersion = ref(0);
 const versionPickerOpen = ref(false);
 const emojiPickerOpen = ref(false);
+const emojiPickerButton = ref(null);
 const draftMediaIds = ref([]);
 const draftExternalMedia = ref([]);
 const draftTagIds = ref([]);
 const draftScheduledAt = ref('');
+const draftScheduleOriginalInstant = ref(null);
 const editingPostUuid = ref('');
 const contextualEditOrigin = ref('');
 const draftSaving = ref(false);
 const draftError = ref('');
+const savedComposerFingerprint = ref('');
+const draftRecoveryStatus = ref('');
+let composerRecoveryReady = false;
+const draftAccountPickerOpen = ref(false);
 const tagPickerOpen = ref(false);
 const tagSearchText = ref('');
 const validationRunning = ref(false);
@@ -621,6 +635,7 @@ const failedImportRetryRunning = ref(false);
 const failedImportRetryError = ref('');
 const failedImportRetryJobs = ref([]);
 const loadError = ref('');
+const workspaceReady = ref(false);
 const confirmationDialog = ref({
     open: false,
     title: '',
@@ -635,6 +650,8 @@ const requestConfirmation = ({
     description,
     confirmLabel = 'Continue',
     danger = false,
+    cancelLabel = 'Cancel',
+    secondaryLabel = '',
 }) => new Promise((resolve) => {
     if (confirmationResolver) {
         confirmationResolver(false);
@@ -647,6 +664,8 @@ const requestConfirmation = ({
         description,
         confirmLabel,
         danger,
+        cancelLabel,
+        secondaryLabel,
     };
 });
 
@@ -674,6 +693,8 @@ const writeClipboard = async (text, errorTarget) => {
 };
 
 const openAddAccountModal = (provider = '') => {
+    activeView.value = 'connections';
+    activeConnectionTab.value = 'accounts';
     activeAccountProvider.value = provider;
     accountError.value = '';
     addAccountModalOpen.value = true;
@@ -781,7 +802,7 @@ const providerReportCards = computed(() => {
 
     return definitions.map((definition) => ({
         ...definition,
-        value: reportMetricMap.value.get(definition.key) || 0,
+        value: observedNumber(reportMetricMap.value.get(definition.key)),
     }));
 });
 
@@ -789,18 +810,23 @@ const activeReportAccount = computed(() => {
     return snapshot.value.accounts.find((account) => Number(account.id) === Number(reportAccountId.value)) || null;
 });
 
+const reportDataStatus = computed(() => ({
+    report: report.value, settings: settings.value, busy: Boolean(accountImportingUuid.value),
+    error: accountImportErrors.value[activeReportAccount.value?.uuid] || '',
+    canImport: Boolean(activeReportAccount.value?.authorized && accountProviderOperation(activeReportAccount.value)?.importCommand),
+}));
+
 const reportAudiencePoints = computed(() => {
     const points = report.value?.audience?.points || [];
 
     return points.map((point, index) => {
-        const value = point.value === null || point.value === undefined ? null : Number(point.value) || 0;
+        const value = observedNumber(point.value);
         const previousPoint = points[index - 1];
-        const previousValue = previousPoint?.value === null || previousPoint?.value === undefined
-            ? null
-            : Number(previousPoint?.value) || 0;
+        const previousValue = observedNumber(previousPoint?.value);
 
         return {
             ...point,
+            label: formatDateOnly(point.date, settings.value?.date_format),
             value,
             index,
             delta: previousValue === null || value === null ? null : value - previousValue,
@@ -813,9 +839,9 @@ const activeReportAudiencePoint = computed(() => {
         return null;
     }
 
-    const index = Number(activeReportAudienceIndex.value);
+    const index = activeReportAudienceIndex.value === null ? -1 : Number(activeReportAudienceIndex.value);
 
-    return reportAudiencePoints.value[index] || reportAudiencePoints.value[reportAudiencePoints.value.length - 1];
+    return reportAudiencePoints.value[index] || reportAudiencePoints.value.findLast((point) => point.value !== null) || reportAudiencePoints.value.at(-1);
 });
 
 const reportAudienceSummary = computed(() => {
@@ -833,9 +859,10 @@ const reportAudienceSummary = computed(() => {
     const high = Math.max(...values);
 
     return {
-        change: last - first,
+        change: values.length > 1 ? last - first : null,
         average,
         high,
+        observations: values.length,
     };
 });
 
@@ -895,18 +922,10 @@ const systemTechnicalRows = computed(() => [
         label: 'Runtime',
         value: 'Tauri desktop',
     },
-    {
-        label: 'FFmpeg',
-        value: health.value?.media_tools?.ffmpeg
-            ? `${health.value.media_tools.ffmpeg.available ? 'Installed' : 'Not installed'} (${health.value.media_tools.ffmpeg.command})`
-            : 'Unknown',
-    },
-    {
-        label: 'FFprobe',
-        value: health.value?.media_tools?.ffprobe
-            ? `${health.value.media_tools.ffprobe.available ? 'Installed' : 'Not installed'} (${health.value.media_tools.ffprobe.command})`
-            : 'Unknown',
-    },
+    ...['ffmpeg', 'ffprobe'].map((tool) => ({
+        label: tool === 'ffmpeg' ? 'FFmpeg' : 'FFprobe',
+        value: health.value?.media_tools?.[tool]?.detail || 'Checking availability…',
+    })),
     {
         label: 'Workspace',
         value: 'Local',
@@ -953,10 +972,14 @@ const softwareUpdateBadge = computed(() => {
     return 'Ready';
 });
 
+const calendarAgendaPage = ref(1);
+const calendarAgenda = computed(() => paginateItems(postQuery.value.items || [], calendarAgendaPage.value));
+watch(() => postQuery.value.items, () => { calendarAgendaPage.value = 1; });
+
 const postGroups = computed(() => {
     const groups = new Map();
 
-    for (const post of postQuery.value.items || []) {
+    for (const post of calendarAgenda.value.items) {
         const key = postDateKey(post);
 
         if (!groups.has(key)) {
@@ -970,11 +993,11 @@ const postGroups = computed(() => {
 });
 
 const postDateKey = (post) => {
-    return post.scheduled_at?.slice(0, 10) || post.published_at?.slice(0, 10) || post.updated_at?.slice(0, 10) || '';
+    return localDateTime(post.scheduled_at || post.published_at || post.updated_at, schedulingTimezone.value).slice(0, 10);
 };
 
 const postHour = (post) => {
-    const time = postTime(post);
+    const time = localDateTime(post.scheduled_at || post.published_at || post.updated_at, schedulingTimezone.value).slice(11);
 
     if (!time) {
         return null;
@@ -1008,7 +1031,6 @@ const addDays = (date, days) => {
 
 const calendarCells = computed(() => {
     const selected = parseLocalDate(postFilter.value.date);
-    const weekStartsOn = Number(settings.value?.week_starts_on ?? 1);
     const postsByDate = new Map();
 
     for (const post of postQuery.value.items || []) {
@@ -1021,25 +1043,10 @@ const calendarCells = computed(() => {
         postsByDate.get(key).push(post);
     }
 
-    let start = selected;
-    let days = 1;
-
-    if (postFilter.value.calendar_type === 'week') {
-        const day = weekStartsOn === 0 ? selected.getDay() : (selected.getDay() + 6) % 7;
-        start = addDays(selected, -day);
-        days = 7;
-    }
-
-    if (postFilter.value.calendar_type === 'month') {
-        const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
-        const day = weekStartsOn === 0 ? first.getDay() : (first.getDay() + 6) % 7;
-        start = addDays(first, -day);
-        days = 42;
-    }
-
-    return Array.from({ length: days }, (_, index) => {
-        const date = addDays(start, index);
-        const key = formatLocalDate(date);
+    const window = postQuery.value.calendar_window;
+    if (window?.selected_date !== postFilter.value.date || window?.calendar_type !== postFilter.value.calendar_type || window?.timezone !== schedulingTimezone.value) return [];
+    return calendarDates(window).map((key) => {
+        const date = parseLocalDate(key);
 
         return {
             date: key,
@@ -1118,6 +1125,7 @@ const moveCalendar = async (direction) => {
     const next = new Date(selected);
 
     if (postFilter.value.calendar_type === 'month') {
+        next.setDate(1);
         next.setMonth(next.getMonth() + direction);
     } else if (postFilter.value.calendar_type === 'week') {
         next.setDate(next.getDate() + direction * 7);
@@ -1546,6 +1554,7 @@ const connectedImportAccountCount = computed(() => {
 });
 
 const navigationBadge = (id) => {
+    if (!workspaceReady.value) return 'Loading…';
     if (id === 'dashboard') {
         return `${dashboard.value?.posts?.scheduled ?? 0} scheduled`;
     }
@@ -1563,7 +1572,7 @@ const navigationBadge = (id) => {
     }
 
     if (id === 'connections') {
-        return `${dashboard.value?.accounts?.authorized ?? 0} accounts · ${activeCredentialCount.value}/${serviceDefinitions.length} services`;
+        return `${snapshot.value.accounts.length} accounts · ${activeCredentialCount.value}/${serviceDefinitions.length} services`;
     }
 
     if (id === 'reports') {
@@ -2061,6 +2070,9 @@ const draftEditor = useTipTapEditor({
     editorProps: {
         attributes: {
             class: 'desktop-rich-editor-content',
+            role: 'textbox',
+            'aria-label': 'Post content',
+            'aria-multiline': 'true',
         },
     },
     onUpdate: ({ editor }) => {
@@ -2090,7 +2102,13 @@ const runDraftEditorCommand = (command) => {
     }
 };
 
-const insertDraftEmoji = (emoji) => {
+const closeEmojiPicker = async ({ returnFocus = true } = {}) => {
+    emojiPickerOpen.value = false;
+    await nextTick();
+    if (returnFocus) emojiPickerButton.value?.focus();
+};
+
+const insertDraftEmoji = async (emoji) => {
     const value = typeof emoji === 'string' ? emoji : emoji?.native;
 
     if (!value) {
@@ -2098,14 +2116,16 @@ const insertDraftEmoji = (emoji) => {
     }
 
     const editor = draftEditor.value;
+    // Remove the focused picker before returning focus to the editor.
+    await closeEmojiPicker({ returnFocus: false });
 
     if (editor) {
-        editor.chain().focus().insertContent(value).run();
+        editor.commands.insertContent(value);
+        // Native WebKit needs focus restored in this interaction, not a later animation frame.
+        editor.view.focus();
     } else {
         activeDraftBody.value = `${activeDraftBody.value || ''}${value}`;
     }
-
-    emojiPickerOpen.value = false;
 };
 
 const canEditPost = (post) => {
@@ -2427,95 +2447,31 @@ const searchNextExternalMediaPage = () => {
     searchExternalMedia(externalMediaResults.value?.next_page || externalMediaSearch.value.page + 1);
 };
 
-const localAiCancelError = () => {
-    const error = new Error('Local AI operation canceled');
-    error.name = 'AbortError';
-    return error;
-};
-
-const throwIfLocalAiCanceled = (signal) => {
-    if (signal?.aborted) {
-        throw localAiCancelError();
-    }
-};
-
-const ensureLocalAiLiteRt = async () => {
-    const litert = await import('@litertjs/core');
-
-    if (!localAiLiteRtLoaded) {
-        await litert.loadLiteRt('./litert/wasm/');
-        localAiLiteRtLoaded = true;
-    }
-
-    return litert;
-};
-
-const localAiModelShapeValue = (shape, index, fallback) => {
-    const value = Number(Array.isArray(shape) ? shape[index] : fallback);
-    return Number.isFinite(value) && value > 0 ? value : fallback;
-};
-
-const loadLocalAiUpscalingBundle = async () => {
-    const manifestResponse = await fetch('./litert/models/manifest.json', { cache: 'no-store' });
-
-    if (!manifestResponse.ok) {
-        throw new Error(`Local AI model manifest unavailable (${manifestResponse.status})`);
-    }
-
-    const manifest = await manifestResponse.json();
-    const models = Array.isArray(manifest?.models) ? manifest.models : [];
-    const upscalingModel = models.find((model) => model.feature === 'image_upscaling' && model.runtime === 'litert');
-    const modelFile = upscalingModel?.files?.find((file) => file.kind === 'model');
-
-    if (!upscalingModel || !modelFile?.path) {
-        throw new Error('Local AI upscaling model is not listed in the bundled manifest');
-    }
-
-    const inputShape = upscalingModel.inputs?.image?.shape || [1, LOCAL_AI_UPSCALE_TILE_SIZE, LOCAL_AI_UPSCALE_TILE_SIZE, 3];
-    const outputShape = upscalingModel.outputs?.upscaled_image?.shape || [
-        1,
-        LOCAL_AI_UPSCALE_TILE_SIZE * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        LOCAL_AI_UPSCALE_TILE_SIZE * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        3,
-    ];
-    const inputTileSize = localAiModelShapeValue(inputShape, 1, LOCAL_AI_UPSCALE_TILE_SIZE);
-    const outputTileSize = localAiModelShapeValue(outputShape, 1, inputTileSize * LOCAL_AI_UPSCALE_SCALE_FACTOR);
-    const modelScaleFactor = outputTileSize / inputTileSize;
-
-    if (inputTileSize !== LOCAL_AI_UPSCALE_TILE_SIZE || modelScaleFactor !== LOCAL_AI_UPSCALE_SCALE_FACTOR) {
-        throw new Error('Bundled Local AI upscaling model must use 128px input tiles and x4 output');
-    }
-
-    return {
-        manifest,
-        models,
-        upscalingModel,
-        modelFile,
-        inputShape,
-        outputShape,
-        inputTileSize,
-        outputTileSize,
-        modelScaleFactor,
+const recordLocalAiModelReady = (modelBundle) => {
+    localAiRuntime.value = {
+        status: 'ready',
+        accelerator: modelBundle.accelerator === 'webgpu' ? 'webgpu_model_ready' : `${modelBundle.accelerator}_model_ready`,
+        webgpu: modelBundle.webgpu,
+        wasm: modelBundle.accelerator !== 'native_cpu',
+        models: modelBundle.models,
+        compiled_model: modelBundle.upscalingModel.name,
+        detail: modelBundle.accelerator === 'native_cpu'
+            ? `Native LiteRT ${modelBundle.execution.runtime_version} · ${modelBundle.execution.cpu_threads} CPU threads; ${modelBundle.upscalingModel.name} compiled`
+            : modelBundle.accelerator === 'webgpu'
+            ? `WebGPU detected; LiteRT Wasm loaded; ${modelBundle.upscalingModel.name} compiled`
+            : `${modelBundle.webgpu ? 'WebGPU detected; using compatible Wasm CPU processing' : 'LiteRT Wasm loaded'}; ${modelBundle.upscalingModel.name} compiled`,
     };
 };
 
-const compileLocalAiUpscalingModel = async () => {
-    const webgpu = Boolean(navigator.gpu);
-    const bundle = await loadLocalAiUpscalingBundle();
-    const { loadAndCompile, Tensor } = await ensureLocalAiLiteRt();
-    const compiledModel = await loadAndCompile(`./litert/models/${bundle.modelFile.path}`, {
-        accelerator: webgpu ? ['webgpu', 'wasm'] : 'wasm',
-    });
-    const accelerator = webgpu ? (compiledModel.isFullyAccelerated ? 'webgpu' : 'wasm_fallback') : 'wasm';
-
-    return {
-        ...bundle,
-        Tensor,
-        compiledModel,
-        webgpu,
-        accelerator,
-    };
-};
+const openLocalAiModelSession = (signal) => createLocalAiSession({
+    invoke,
+    createFallback: () => createLocalAiWorkerClient({
+        createWorker: () => new Worker(new URL('./localAi.worker.js', import.meta.url)),
+        signal,
+    }),
+    signal,
+});
+const localAiAssetsBase = () => new URL('./litert/', document.baseURI).href;
 
 const createLocalAiCanvas = (width, height) => {
     const canvas = document.createElement('canvas');
@@ -2534,22 +2490,39 @@ const localAiCanvasContext = (canvas) => {
     return context;
 };
 
-const loadLocalAiImage = async (url) => new Promise((resolve, reject) => {
+const loadLocalAiImage = async (url, signal) => new Promise((resolve, reject) => {
+    throwIfLocalAiCanceled(signal);
     const image = new Image();
+    const finish = (callback) => {
+        image.onload = image.onerror = null;
+        signal?.removeEventListener('abort', abort);
+        callback();
+    };
+    const abort = () => {
+        finish(() => {
+            try { throwIfLocalAiCanceled(signal); } catch (error) { reject(error); }
+        });
+        image.src = '';
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    // Tauri's scoped asset protocol permits the app origin. Request CORS before
+    // loading so canvas pixel reads stay origin-clean in the packaged WebView.
+    image.crossOrigin = 'anonymous';
     image.decoding = 'async';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Local AI source image could not be loaded'));
+    image.onload = () => finish(() => resolve(image));
+    image.onerror = () => finish(() => reject(new Error('Local AI source image could not be loaded')));
     image.src = url;
 });
 
-const prepareLocalAiSourceCanvas = async (item) => {
+const prepareLocalAiSourceCanvas = async (item, signal) => {
     const sourceUrl = mediaAssetUrl(item?.url || item?.thumb_url || '');
 
     if (!sourceUrl) {
         throw new Error('Local AI source image URL is unavailable');
     }
 
-    const image = await loadLocalAiImage(sourceUrl);
+    const image = await loadLocalAiImage(sourceUrl, signal);
+    throwIfLocalAiCanceled(signal);
     const originalWidth = image.naturalWidth || image.width;
     const originalHeight = image.naturalHeight || image.height;
 
@@ -2557,9 +2530,9 @@ const prepareLocalAiSourceCanvas = async (item) => {
         throw new Error('Local AI source image dimensions are unavailable');
     }
 
-    const processingScale = Math.min(1, LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE / Math.max(originalWidth, originalHeight));
-    const processingWidth = Math.max(1, Math.round(originalWidth * processingScale));
-    const processingHeight = Math.max(1, Math.round(originalHeight * processingScale));
+    const tiles = localAiTiles(originalWidth, originalHeight);
+    const processingWidth = originalWidth;
+    const processingHeight = originalHeight;
     const canvas = createLocalAiCanvas(processingWidth, processingHeight);
     const context = localAiCanvasContext(canvas);
     context.drawImage(image, 0, 0, processingWidth, processingHeight);
@@ -2571,154 +2544,85 @@ const prepareLocalAiSourceCanvas = async (item) => {
         originalHeight,
         processingWidth,
         processingHeight,
+        tiles,
+        pixels: context.getImageData(0, 0, processingWidth, processingHeight).data,
     };
 };
 
-const localAiTileInput = (sourceContext, tileX, tileY, cropWidth, cropHeight) => {
-    const pixels = sourceContext.getImageData(tileX, tileY, cropWidth, cropHeight).data;
-    const input = new Uint8Array(LOCAL_AI_UPSCALE_TILE_SIZE * LOCAL_AI_UPSCALE_TILE_SIZE * 3);
-
-    for (let y = 0; y < LOCAL_AI_UPSCALE_TILE_SIZE; y += 1) {
-        const sourceY = Math.min(y, cropHeight - 1);
-
-        for (let x = 0; x < LOCAL_AI_UPSCALE_TILE_SIZE; x += 1) {
-            const sourceX = Math.min(x, cropWidth - 1);
-            const sourceIndex = (sourceY * cropWidth + sourceX) * 4;
-            const inputIndex = (y * LOCAL_AI_UPSCALE_TILE_SIZE + x) * 3;
-            input[inputIndex] = pixels[sourceIndex];
-            input[inputIndex + 1] = pixels[sourceIndex + 1];
-            input[inputIndex + 2] = pixels[sourceIndex + 2];
-        }
-    }
-
-    return input;
-};
-
-const localAiModelByte = (value) => {
-    const scaled = value >= 0 && value <= 1 ? value * 255 : value;
-    return Math.max(0, Math.min(255, Math.round(scaled)));
-};
-
-const drawLocalAiUpscaleTile = (targetContext, outputData, tileX, tileY, cropWidth, cropHeight, outputTileSize) => {
+const drawLocalAiUpscaleTile = (targetContext, outputData, tile, outputTileSize) => {
     const tileCanvas = createLocalAiCanvas(outputTileSize, outputTileSize);
     const tileContext = localAiCanvasContext(tileCanvas);
     const imageData = tileContext.createImageData(outputTileSize, outputTileSize);
 
-    for (let outputIndex = 0, rgbaIndex = 0; outputIndex < outputData.length; outputIndex += 3, rgbaIndex += 4) {
-        imageData.data[rgbaIndex] = localAiModelByte(outputData[outputIndex]);
-        imageData.data[rgbaIndex + 1] = localAiModelByte(outputData[outputIndex + 1]);
-        imageData.data[rgbaIndex + 2] = localAiModelByte(outputData[outputIndex + 2]);
-        imageData.data[rgbaIndex + 3] = 255;
-    }
+    const rgba = localAiOutputRgba(outputData);
+    if (rgba.length !== imageData.data.length) throw new Error('Local AI model returned unexpected image dimensions');
+    imageData.data.set(rgba);
 
     tileContext.putImageData(imageData, 0, 0);
     targetContext.drawImage(
         tileCanvas,
-        0,
-        0,
-        cropWidth * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        cropHeight * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        tileX * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        tileY * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        cropWidth * LOCAL_AI_UPSCALE_SCALE_FACTOR,
-        cropHeight * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.offsetX * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.offsetY * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.width * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.height * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.x * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.y * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.width * LOCAL_AI_UPSCALE_SCALE_FACTOR,
+        tile.height * LOCAL_AI_UPSCALE_SCALE_FACTOR,
     );
 };
 
-const runLocalAiUpscaleTile = async (compiledModel, Tensor, inputBytes, inputShape) => {
-    let inputTensor = null;
-    let outputTensor = null;
-    let cpuOutputTensor = null;
-    let outputs = null;
+const upscaleLocalAiMediaWithModel = async (item, { signal, setProgress, beginCommit }) => {
+    let client = null;
+    const stopMeasuring = observeLocalAiResponsiveness();
+    let inferenceMs = 0;
 
     try {
-        inputTensor = new Tensor(inputBytes, inputShape);
-        outputs = await compiledModel.run(inputTensor);
-        const outputList = Array.isArray(outputs) ? outputs : Object.values(outputs || {});
-        outputTensor = outputList[0];
-
-        if (!outputTensor) {
-            throw new Error('Local AI model did not return an output tensor');
-        }
-
-        cpuOutputTensor = outputTensor.accelerator === 'wasm' ? outputTensor : await outputTensor.moveTo('wasm');
-        const outputData = cpuOutputTensor.toTypedArray();
-        return outputData.slice ? outputData.slice() : new outputData.constructor(outputData);
-    } finally {
-        if (inputTensor && !inputTensor.deleted) {
-            inputTensor.delete();
-        }
-
-        const outputList = Array.isArray(outputs) ? outputs : Object.values(outputs || {});
-
-        for (const tensor of outputList) {
-            if (tensor && tensor !== cpuOutputTensor && !tensor.deleted) {
-                tensor.delete();
-            }
-        }
-
-        if (cpuOutputTensor && !cpuOutputTensor.deleted) {
-            cpuOutputTensor.delete();
-        }
-    }
-};
-
-const upscaleLocalAiMediaWithModel = async (item, { signal, setProgress }) => {
-    let compiledModel = null;
-
-    try {
-        throwIfLocalAiCanceled(signal);
-        setProgress?.('Loading bundled upscaling model');
-        const modelBundle = await compileLocalAiUpscalingModel();
-        compiledModel = modelBundle.compiledModel;
-
         throwIfLocalAiCanceled(signal);
         setProgress?.('Preparing source image');
-        const source = await prepareLocalAiSourceCanvas(item);
+        const source = await prepareLocalAiSourceCanvas(item, signal);
+        setProgress?.('Loading bundled upscaling model');
+        client = openLocalAiModelSession(signal);
+        const modelBundle = await client.request('compile', { assetsBase: localAiAssetsBase() });
+        recordLocalAiModelReady(modelBundle);
+
+        throwIfLocalAiCanceled(signal);
         const outputCanvas = createLocalAiCanvas(
             source.processingWidth * LOCAL_AI_UPSCALE_SCALE_FACTOR,
             source.processingHeight * LOCAL_AI_UPSCALE_SCALE_FACTOR,
         );
         const outputContext = localAiCanvasContext(outputCanvas);
-        const tileColumns = Math.ceil(source.processingWidth / LOCAL_AI_UPSCALE_TILE_SIZE);
-        const tileRows = Math.ceil(source.processingHeight / LOCAL_AI_UPSCALE_TILE_SIZE);
-        const tileTotal = tileColumns * tileRows;
+        const tileTotal = source.tiles.length;
         let tileIndex = 0;
 
-        for (let row = 0; row < tileRows; row += 1) {
-            for (let column = 0; column < tileColumns; column += 1) {
-                throwIfLocalAiCanceled(signal);
-                tileIndex += 1;
-                setProgress?.(`Upscaling tile ${tileIndex} of ${tileTotal}`);
+        for (const tile of source.tiles) {
+            throwIfLocalAiCanceled(signal);
+            tileIndex += 1;
+            setProgress?.(`Upscaling tile ${tileIndex} of ${tileTotal} · ${modelBundle.accelerator === 'webgpu' ? 'GPU' : 'CPU'} processing in background`);
 
-                const tileX = column * LOCAL_AI_UPSCALE_TILE_SIZE;
-                const tileY = row * LOCAL_AI_UPSCALE_TILE_SIZE;
-                const cropWidth = Math.min(LOCAL_AI_UPSCALE_TILE_SIZE, source.processingWidth - tileX);
-                const cropHeight = Math.min(LOCAL_AI_UPSCALE_TILE_SIZE, source.processingHeight - tileY);
-                const inputBytes = localAiTileInput(source.context, tileX, tileY, cropWidth, cropHeight);
-                const outputData = await runLocalAiUpscaleTile(
-                    compiledModel,
-                    modelBundle.Tensor,
-                    inputBytes,
-                    modelBundle.inputShape,
-                );
-                drawLocalAiUpscaleTile(
-                    outputContext,
-                    outputData,
-                    tileX,
-                    tileY,
-                    cropWidth,
-                    cropHeight,
-                    modelBundle.outputTileSize,
-                );
-            }
+            const inputBytes = localAiTileInput(source.pixels, source.processingWidth, source.processingHeight, tile);
+            const { outputData, inference_ms } = await client.request('tile', { inputBytes }, [inputBytes.buffer]);
+            inferenceMs += inference_ms;
+            throwIfLocalAiCanceled(signal);
+            drawLocalAiUpscaleTile(
+                outputContext,
+                outputData,
+                tile,
+                modelBundle.outputTileSize,
+            );
         }
 
         throwIfLocalAiCanceled(signal);
-        setProgress?.('Saving derivative');
+        // LiteRT's RGB model does not predict alpha. Preserve source transparency
+        // with the same 4× geometry instead of turning transparent images opaque.
+        outputContext.globalCompositeOperation = 'destination-in';
+        outputContext.drawImage(source.canvas, 0, 0, outputCanvas.width, outputCanvas.height);
         const imageDataUrl = outputCanvas.toDataURL('image/png');
+        await client.request('release');
+        const timings = { compile_ms: modelBundle.compile_ms, inference_ms: inferenceMs, tiles: tileTotal, execution: modelBundle.execution, ...stopMeasuring() };
+        beginCommit();
 
-        return invoke('save_local_ai_model_upscale_derivative', {
+        const result = await invoke('save_local_ai_model_upscale_derivative', {
             form: {
                 uuid: item.uuid,
                 image_data_url: imageDataUrl,
@@ -2738,104 +2642,56 @@ const upscaleLocalAiMediaWithModel = async (item, { signal, setProgress }) => {
                 original_height: source.originalHeight,
             },
         });
+        return { ...result, timings };
     } finally {
-        if (compiledModel && !compiledModel.deleted) {
-            compiledModel.delete();
-        }
+        client?.dispose();
+        stopMeasuring();
     }
 };
 
 const probeLocalAiRuntime = async () => {
-    localAiBusy.value = true;
-    localAiError.value = '';
-    localAiResult.value = null;
-    const webgpu = Boolean(navigator.gpu);
-    let compiledModel = null;
+    await runLocalAiMediaAction('Local runtime check', async ({ signal, setProgress }) => {
+        const webgpu = Boolean(navigator.gpu);
+        let client = null;
 
-    try {
-        const modelBundle = await compileLocalAiUpscalingModel();
-        compiledModel = modelBundle.compiledModel;
+        try {
+            setProgress('Loading bundled model in background');
+            client = openLocalAiModelSession(signal);
+            const modelBundle = await client.request('compile', { assetsBase: localAiAssetsBase() });
+            await client.request('release');
+            throwIfLocalAiCanceled(signal);
 
-        localAiRuntime.value = {
-            status: 'ready',
-            accelerator: modelBundle.accelerator === 'webgpu' ? 'webgpu_model_ready' : `${modelBundle.accelerator}_model_ready`,
-            webgpu,
-            wasm: true,
-            models: modelBundle.models.length,
-            compiled_model: modelBundle.upscalingModel.name,
-            detail: webgpu
-                ? `WebGPU detected; LiteRT Wasm loaded; ${modelBundle.upscalingModel.name} compiled`
-                : `LiteRT Wasm loaded; ${modelBundle.upscalingModel.name} compiled`,
-        };
-    } catch (error) {
-        localAiRuntime.value = {
-            status: 'error',
-            accelerator: webgpu ? 'webgpu_available_wasm_error' : 'wasm_error',
-            webgpu,
-            wasm: false,
-            models: 0,
-            compiled_model: '',
-            detail: String(error),
-        };
-        localAiError.value = String(error);
-    } finally {
-        if (compiledModel && !compiledModel.deleted) {
-            compiledModel.delete();
+            recordLocalAiModelReady(modelBundle);
+            return { timings: { compile_ms: modelBundle.compile_ms, execution: modelBundle.execution } };
+        } catch (error) {
+            if (signal.aborted) throw error;
+            localAiRuntime.value = {
+                status: 'error',
+                accelerator: webgpu ? 'webgpu_available_wasm_error' : 'wasm_error',
+                webgpu,
+                wasm: false,
+                models: 0,
+                compiled_model: '',
+                detail: String(error),
+            };
+            throw error;
+        } finally {
+            client?.dispose();
         }
-
-        localAiBusy.value = false;
-    }
+    }, { cancellable: true });
 };
 
-const cancelLocalAiOperation = () => {
-    if (!localAiAbortController) {
-        return;
-    }
+const cancelLocalAiOperation = () => localAiOperation.cancel();
 
-    localAiAbortController.abort();
-    localAiResult.value = {
-        operation: localAiResult.value?.operation || 'Local AI operation',
-        status: 'canceling',
-        detail: 'Canceling after the current tile',
-    };
-};
-
-const runLocalAiMediaAction = async (operation, action, { reload = false } = {}) => {
-    const controller = new AbortController();
-    localAiAbortController = controller;
-    localAiBusy.value = true;
-    localAiError.value = '';
-    localAiResult.value = { operation, status: 'running', detail: 'Starting' };
-
-    const setProgress = (detail) => {
-        if (!controller.signal.aborted) {
-            localAiResult.value = { operation, status: 'running', detail };
-        }
-    };
-
-    try {
-        const result = await action({ signal: controller.signal, setProgress });
-        throwIfLocalAiCanceled(controller.signal);
-        localAiResult.value = { operation, status: 'complete', result };
-
-        if (reload) {
+const runLocalAiMediaAction = async (operation, action, { reload = false, cancellable = false } = {}) => {
+    return localAiOperation.run(operation, action, {
+        cancellable,
+        afterSuccess: reload ? async () => {
             await load();
             await loadMediaLibrary();
-        }
-    } catch (error) {
-        if (controller.signal.aborted || error?.name === 'AbortError') {
-            localAiResult.value = { operation, status: 'canceled', detail: 'Canceled' };
-        } else {
-            localAiResult.value = null;
-            localAiError.value = String(error);
-        }
-    } finally {
-        if (localAiAbortController === controller) {
-            localAiAbortController = null;
-        }
-
-        localAiBusy.value = false;
-    }
+            if (loadError.value || mediaLibraryError.value) throw new Error(loadError.value || mediaLibraryError.value);
+        } : undefined,
+    });
 };
 
 const preflightLocalAiMedia = async (item) => {
@@ -2854,8 +2710,8 @@ const upscaleLocalAiMedia = async (item, scaleFactor = LOCAL_AI_UPSCALE_SCALE_FA
 
     await runLocalAiMediaAction(
         'Local image upscaling',
-        ({ signal, setProgress }) => upscaleLocalAiMediaWithModel(item, { signal, setProgress }),
-        { reload: true },
+        (context) => upscaleLocalAiMediaWithModel(item, context),
+        { reload: true, cancellable: true },
     );
 };
 
@@ -2868,24 +2724,32 @@ const cropLocalAiMedia = async (item) => {
 };
 
 const draftLocalAiAltText = async (item) => {
-    await runLocalAiMediaAction('Alt-text draft', () => invoke('draft_local_ai_alt_text', { uuid: item.uuid }));
+    if (localAiBusy.value) return;
+    const currentDraft = localAiAltTextDraft.value;
+    if (currentDraft && currentDraft.text !== currentDraft.generatedText && !await requestConfirmation({
+        title: 'Replace your edited alt-text draft?',
+        description: 'Copy any edits you want to keep before generating another temporary draft.',
+        confirmLabel: 'Replace draft',
+        cancelLabel: 'Keep draft',
+    })) return;
+    await runLocalAiMediaAction('Alt-text draft', async () => {
+        const result = await invoke('draft_local_ai_alt_text', { uuid: item.uuid });
+        localAiAltTextDraft.value = { text: result.alt_text, generatedText: result.alt_text, name: result.media.name };
+        return result;
+    });
 };
 
 const searchLocalAiMedia = async () => {
-    localAiBusy.value = true;
-    localAiError.value = '';
-    localAiResult.value = null;
-
-    try {
-        localAiSearchResults.value = await invoke('local_ai_media_search', {
-            query: localAiSearchQuery.value,
+    if (localAiBusy.value) return;
+    localAiSearchResults.value = null;
+    const query = localAiSearchQuery.value;
+    await runLocalAiMediaAction('Local media search', async () => {
+        const result = await invoke('local_ai_media_search', {
+            query,
         });
-    } catch (error) {
-        localAiSearchResults.value = null;
-        localAiError.value = String(error);
-    } finally {
-        localAiBusy.value = false;
-    }
+        localAiSearchResults.value = result;
+        return result;
+    });
 };
 
 const setMediaTab = (tab) => {
@@ -2923,15 +2787,8 @@ const draftSubmitLabel = computed(() => {
     return editingPostUuid.value ? 'Update Post' : 'Save Draft';
 });
 
-const draftScheduleDate = computed(() => {
-    if (!draftScheduledAt.value) {
-        return null;
-    }
-
-    const date = new Date(draftScheduledAt.value);
-
-    return Number.isNaN(date.getTime()) ? null : date;
-});
+const draftScheduleResult = computed(() => parseSchedule(draftScheduledAt.value, schedulingTimezone.value, draftScheduleOriginalInstant.value));
+const draftScheduleDate = computed(() => draftScheduleResult.value.date);
 
 const draftScheduleLabel = computed(() => {
     if (!draftScheduledAt.value) {
@@ -2942,22 +2799,13 @@ const draftScheduleLabel = computed(() => {
         return 'Invalid time';
     }
 
-    const datePart = draftScheduleDate.value.toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-    });
-    const timePart = draftScheduleDate.value.toLocaleTimeString(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: Number(settings.value?.time_format ?? 12) !== 24,
-    });
-
-    return `${datePart}, ${timePart}`;
+    return formatTimestamp(draftScheduleDate.value);
 });
 
 const canSaveDraft = computed(() => {
     return Boolean(
         compactEditorText(draftBody.value)
+        || draftAccountIds.value.some((id) => compactEditorText(draftAccountBodies.value[id]))
         || draftMediaIds.value.length
         || draftExternalMedia.value.length,
     );
@@ -3139,6 +2987,7 @@ const load = async () => {
         dashboard.value = dashboardResult;
         health.value = healthResult;
         settings.value = settingsResult;
+        if (!composerRecoveryReady) postFilter.value.date = todayDate();
         settingsDraft.value = {
             ...settingsResult,
             default_accounts: [...(settingsResult.default_accounts || [])],
@@ -3178,29 +3027,35 @@ const load = async () => {
     }
 };
 
+let postQueryRequestId = 0;
 const loadPostQuery = async () => {
+    const requestId = ++postQueryRequestId;
     postQueryLoading.value = true;
     postQueryError.value = '';
     const useCalendarWindow = activeView.value === 'calendar';
 
     try {
-        postQuery.value = await invoke('query_posts', {
-            request: {
-                status: postFilter.value.status || null,
-                exclude_status: useCalendarWindow && !postFilter.value.status ? 'draft' : null,
-                keyword: postFilter.value.keyword || null,
-                accounts: postFilter.value.accounts,
-                tags: postFilter.value.tags,
-                calendar_type: useCalendarWindow ? postFilter.value.calendar_type : null,
-                date: useCalendarWindow ? postFilter.value.date : null,
-                limit: useCalendarWindow ? 200 : postFilter.value.per_page,
-                page: useCalendarWindow ? 1 : postFilter.value.page,
-            },
+        const request = {
+            status: postFilter.value.status || null,
+            exclude_status: useCalendarWindow && !postFilter.value.status ? 'draft' : null,
+            keyword: postFilter.value.keyword || null,
+            accounts: [...postFilter.value.accounts],
+            tags: [...postFilter.value.tags],
+            calendar_type: useCalendarWindow ? postFilter.value.calendar_type : null,
+            date: useCalendarWindow ? postFilter.value.date : null,
+            limit: useCalendarWindow ? 200 : postFilter.value.per_page,
+            page: useCalendarWindow ? 1 : postFilter.value.page,
+        };
+        const result = await queryPostPages((request) => invoke('query_posts', { request }), request, {
+            allPages: useCalendarWindow, isCurrent: () => requestId === postQueryRequestId,
         });
+        if (!result) return;
+        postQuery.value = result;
         postFilter.value.page = postQuery.value.page || 1;
         const visible = new Set(postQuery.value.items.map((post) => post.uuid));
         selectedPostUuids.value = selectedPostUuids.value.filter((uuid) => visible.has(uuid));
     } catch (error) {
+        if (requestId !== postQueryRequestId) return;
         postQuery.value = {
             items: [],
             total: 0,
@@ -3212,7 +3067,7 @@ const loadPostQuery = async () => {
         };
         postQueryError.value = String(error);
     } finally {
-        postQueryLoading.value = false;
+        if (requestId === postQueryRequestId) postQueryLoading.value = false;
     }
 };
 
@@ -3277,7 +3132,9 @@ const selectCalendarDate = async (date) => {
     await loadPostQuery();
 };
 
+let reportRequestId = 0;
 const loadReport = async (accountId = reportAccountId.value || snapshot.value.accounts[0]?.id) => {
+    const requestId = ++reportRequestId;
     reportError.value = '';
     reportLoading.value = true;
 
@@ -3291,19 +3148,22 @@ const loadReport = async (accountId = reportAccountId.value || snapshot.value.ac
     reportAccountId.value = Number(accountId);
 
     try {
-        report.value = await invoke('account_report', {
+        const result = await invoke('account_report', {
             request: {
                 account_id: Number(accountId),
                 period: reportPeriod.value,
             },
         });
+        if (requestId !== reportRequestId) return;
+        report.value = result;
         activeReportAudienceIndex.value = null;
     } catch (error) {
+        if (requestId !== reportRequestId) return;
         report.value = null;
         activeReportAudienceIndex.value = null;
         reportError.value = String(error);
     } finally {
-        reportLoading.value = false;
+        if (requestId === reportRequestId) reportLoading.value = false;
     }
 };
 
@@ -3647,7 +3507,6 @@ const restoreLocalBackup = async () => {
                 backup_path: restoreBackupPath.value,
             },
         });
-        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
         resetDraftEditor();
         await load();
         systemLogs.value = await invoke('system_logs');
@@ -4829,12 +4688,14 @@ const importAccountData = async (account) => {
     }
 
     accountImportingUuid.value = account.uuid;
+    accountImportErrors.value[account.uuid] = '';
     accountError.value = '';
 
     try {
         operation.importSummary.value = await invoke(operation.importCommand, { uuid: account.uuid });
         await load();
     } catch (error) {
+        accountImportErrors.value[account.uuid] = String(error);
         accountError.value = String(error);
         await load();
     } finally {
@@ -5028,7 +4889,7 @@ const downloadExternalMediaItem = async (item) => {
 };
 
 const createPostFromMediaIds = async (mediaIds, externalMedia = []) => {
-    await invoke('create_draft_post', {
+    const post = await invoke('create_draft_post', {
         post: {
             accounts: [],
             tags: [],
@@ -5048,51 +4909,52 @@ const createPostFromMediaIds = async (mediaIds, externalMedia = []) => {
             ],
         },
     });
+    await load();
+    await loadPostIntoComposer(post.uuid);
 };
 
 const createPostFromSelectedMedia = async () => {
-    mediaSaving.value = true;
-    mediaError.value = '';
-    mediaProgress.value = 'Creating post from media';
+    return replaceComposer(async () => {
+        mediaSaving.value = true;
+        mediaError.value = '';
+        mediaProgress.value = 'Creating post from media';
 
-    try {
-        const mediaIds = selectedMediaIds.value.map((id) => Number(id));
+        try {
+            const mediaIds = selectedMediaIds.value.map((id) => Number(id));
 
-        let externalMedia = [];
+            let externalMedia = [];
 
-        if (activeMediaTab.value !== 'uploads' && selectedExternalMediaIncludesKlipy.value) {
-            externalMedia = selectedExternalMediaItems.value.map(externalMediaReference);
-        } else if (activeMediaTab.value !== 'uploads') {
-            for (const item of selectedExternalMediaItems.value) {
-                const saved = await invoke('download_external_media', {
-                    media: {
-                        url: item.url,
-                        name: item.name || null,
-                        source: externalMediaResults.value?.source || externalMediaSearch.value.source,
-                        download_data: item.download_data ?? {},
-                    },
-                });
-                mediaIds.push(saved.id);
+            if (activeMediaTab.value !== 'uploads' && selectedExternalMediaIncludesKlipy.value) {
+                externalMedia = selectedExternalMediaItems.value.map(externalMediaReference);
+            } else if (activeMediaTab.value !== 'uploads') {
+                for (const item of selectedExternalMediaItems.value) {
+                    const saved = await invoke('download_external_media', {
+                        media: {
+                            url: item.url,
+                            name: item.name || null,
+                            source: externalMediaResults.value?.source || externalMediaSearch.value.source,
+                            download_data: item.download_data ?? {},
+                        },
+                    });
+                    mediaIds.push(saved.id);
+                }
             }
-        }
 
-        if (!mediaIds.length && !externalMedia.length) {
-            mediaError.value = 'Select at least one media item';
-            return;
-        }
+            if (!mediaIds.length && !externalMedia.length) {
+                mediaError.value = 'Select at least one media item';
+                return;
+            }
 
-        await createPostFromMediaIds(mediaIds, externalMedia);
-        selectedMediaIds.value = [];
-        selectedExternalMediaIds.value = [];
-        activeView.value = 'posts';
-        activePostsMode.value = 'compose';
-        await load();
-    } catch (error) {
-        mediaError.value = String(error);
-    } finally {
-        mediaProgress.value = '';
-        mediaSaving.value = false;
-    }
+            await createPostFromMediaIds(mediaIds, externalMedia);
+            selectedMediaIds.value = [];
+            selectedExternalMediaIds.value = [];
+        } catch (error) {
+            mediaError.value = String(error);
+        } finally {
+            mediaProgress.value = '';
+            mediaSaving.value = false;
+        }
+    });
 };
 
 const deleteMedia = async (uuid) => {
@@ -5185,6 +5047,9 @@ const cleanupMediaFiles = async () => {
 };
 
 const resetDraftEditor = () => {
+    savedComposerFingerprint.value = '';
+    draftRecoveryStatus.value = '';
+    draftScheduleOriginalInstant.value = null;
     editingPostUuid.value = '';
     contextualEditOrigin.value = '';
     draftBody.value = '';
@@ -5195,37 +5060,55 @@ const resetDraftEditor = () => {
     draftExternalMedia.value = [];
     draftTagIds.value = [];
     draftScheduledAt.value = '';
-    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    try { window.localStorage.removeItem(DRAFT_STORAGE_KEY); } catch { /* Persistence watcher reports storage failures. */ }
 };
 
-const createPostFromCalendarDate = (date) => {
-    resetDraftEditor();
-    draftScheduledAt.value = `${date}T09:00`;
-    activeView.value = 'posts';
-    activePostsMode.value = 'compose';
-};
+const replaceComposer = createDraftReplacementGuard({
+    isBusy: () => draftSaving.value || scheduleSaving.value,
+    hasChanges: () => composerHasDraftContent() && composerFingerprint() !== savedComposerFingerprint.value,
+    choose: async () => {
+        const choice = await requestConfirmation({
+        title: 'Keep your current draft?',
+        description: 'You have changes in the composer. Save them before continuing, keep editing, or explicitly discard them.',
+        cancelLabel: 'Keep editing',
+        secondaryLabel: 'Save draft and continue',
+        confirmLabel: 'Discard and continue',
+        danger: true,
+        });
+        if (!choice) openComposer();
+        return choice;
+    },
+    save: async () => {
+        const saved = await persistDraftPost({ resetAfterSave: false });
+        if (!saved) openComposer();
+        if (saved && composerFingerprint() !== savedComposerFingerprint.value) {
+            draftError.value = 'New changes were made while saving. Your draft is still open; save again before continuing.';
+            openComposer();
+            return false;
+        }
+        return Boolean(saved);
+    },
+    onError: (error) => { draftError.value = String(error); },
+});
 
-const createPostFromCalendarSlot = (date, hour) => {
+const discardComposer = () => replaceComposer(resetDraftEditor);
+
+const createPostFromCalendarDate = (date) => replaceComposer(() => {
     resetDraftEditor();
-    draftScheduledAt.value = `${date}T${String(hour).padStart(2, '0')}:00`;
+    draftScheduledAt.value = suggestedSchedule(date, schedulingTimezone.value);
     activeView.value = 'posts';
     activePostsMode.value = 'compose';
-};
+});
+
+const createPostFromCalendarSlot = (date, hour) => replaceComposer(() => {
+    resetDraftEditor();
+    draftScheduledAt.value = suggestedSchedule(date, schedulingTimezone.value, hour);
+    activeView.value = 'posts';
+    activePostsMode.value = 'compose';
+});
 
 const toDateTimeLocal = (value) => {
-    if (!value) {
-        return '';
-    }
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-        return '';
-    }
-
-    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-
-    return date.toISOString().slice(0, 16);
+    return localDateTime(value, schedulingTimezone.value);
 };
 
 const postPayload = (body) => {
@@ -5283,33 +5166,53 @@ const composerHasDraftContent = () => {
     );
 };
 
-const persistComposerDraft = () => {
-    if (!composerHasDraftContent()) {
-        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-        return;
-    }
+const composerFingerprint = () => JSON.stringify({
+    body: normalizeEditorContent(draftBody.value), accounts: draftAccountIds.value,
+    versions: draftAccountBodies.value, media: draftMediaIds.value, external: draftExternalMedia.value,
+    tags: draftTagIds.value, scheduledAt: draftScheduledAt.value,
+});
 
-    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({
-        editingPostUuid: editingPostUuid.value,
-        body: draftBody.value,
-        accounts: draftAccountIds.value,
-        accountBodies: draftAccountBodies.value,
-        activeVersion: activeDraftVersion.value,
-        media: draftMediaIds.value,
-        externalMedia: draftExternalMedia.value,
-        tags: draftTagIds.value,
-        scheduledAt: draftScheduledAt.value,
-    }));
+const composerSaveStatus = computed(() => draftSaving.value ? 'Saving…'
+    : editingPostUuid.value && composerFingerprint() === savedComposerFingerprint.value
+        ? 'Saved to Post library' : draftRecoveryStatus.value);
+
+const persistComposerDraft = () => {
+    if (!composerRecoveryReady) return;
+    try {
+        if (!composerHasDraftContent()) {
+            window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+            draftRecoveryStatus.value = '';
+            return;
+        }
+
+        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({
+            editingPostUuid: editingPostUuid.value,
+            body: draftBody.value,
+            accounts: draftAccountIds.value,
+            accountBodies: draftAccountBodies.value,
+            activeVersion: activeDraftVersion.value,
+            media: draftMediaIds.value,
+            externalMedia: draftExternalMedia.value,
+            tags: draftTagIds.value,
+            scheduledAt: draftScheduledAt.value,
+            scheduleInstant: draftScheduleResult.value.date?.toISOString() || null,
+            timeZone: schedulingTimezone.value,
+            savedFingerprint: savedComposerFingerprint.value,
+        }));
+        draftRecoveryStatus.value = 'Recovery copy saved on this Mac';
+    } catch {
+        draftRecoveryStatus.value = 'Recovery could not be saved. Use Save Draft before leaving the app.';
+    }
 };
 
 const restoreComposerDraft = () => {
-    const saved = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-
-    if (!saved) {
-        return;
-    }
-
     try {
+        const saved = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+
+        if (!saved) {
+            return;
+        }
+
         const draft = JSON.parse(saved);
 
         editingPostUuid.value = draft.editingPostUuid || '';
@@ -5320,27 +5223,34 @@ const restoreComposerDraft = () => {
         draftMediaIds.value = Array.isArray(draft.media) ? draft.media : [];
         draftExternalMedia.value = Array.isArray(draft.externalMedia) ? draft.externalMedia : [];
         draftTagIds.value = Array.isArray(draft.tags) ? draft.tags : [];
-        draftScheduledAt.value = draft.scheduledAt || '';
+        const oldZone = draft.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const schedule = parseSchedule(draft.scheduledAt, oldZone, draft.scheduleInstant);
+        draftScheduleOriginalInstant.value = schedule.date?.toISOString() || null;
+        draftScheduledAt.value = schedule.date ? toDateTimeLocal(schedule.date) : draft.scheduledAt || '';
+        savedComposerFingerprint.value = draft.savedFingerprint || '';
+        draftRecoveryStatus.value = 'Recovered your composer from this Mac';
+        if (schedule.error) draftError.value = schedule.error;
     } catch (_error) {
-        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+        draftRecoveryStatus.value = 'The recovery copy could not be read. Saved posts are still in Post library.';
     }
 };
 
 const persistDraftPost = async ({ resetAfterSave = true } = {}) => {
     const body = normalizeEditorContent(draftBody.value);
 
-    if (!compactEditorText(body) && !draftMediaIds.value.length && !draftExternalMedia.value.length) {
+    if (!canSaveDraft.value) {
         draftError.value = 'Draft needs text or media';
         return null;
     }
 
     if (draftScheduledAt.value && !draftScheduleDate.value) {
-        draftError.value = 'Enter a valid schedule time';
+        draftError.value = draftScheduleResult.value.error || 'Enter a valid schedule time';
         return null;
     }
 
     draftSaving.value = true;
     draftError.value = '';
+    const savingFingerprint = composerFingerprint();
 
     try {
         let savedPost;
@@ -5360,6 +5270,7 @@ const persistDraftPost = async ({ resetAfterSave = true } = {}) => {
             resetDraftEditor();
         } else if (savedPost?.uuid) {
             editingPostUuid.value = savedPost.uuid;
+            savedComposerFingerprint.value = savingFingerprint;
         }
 
         await load();
@@ -5373,7 +5284,7 @@ const persistDraftPost = async ({ resetAfterSave = true } = {}) => {
 };
 
 const saveDraftPost = async () => {
-    await persistDraftPost();
+    await persistDraftPost({ resetAfterSave: false });
 };
 
 const clearDraftScheduleTime = () => {
@@ -5389,7 +5300,7 @@ const scheduleCurrentDraft = async ({ postNow = false } = {}) => {
     }
 
     if (draftScheduledAt.value && !draftScheduleDate.value) {
-        scheduleError.value = 'Enter a valid schedule time';
+        scheduleError.value = draftScheduleResult.value.error || 'Enter a valid schedule time';
         return;
     }
 
@@ -5400,7 +5311,8 @@ const scheduleCurrentDraft = async ({ postNow = false } = {}) => {
 
     const savedPost = await persistDraftPost({ resetAfterSave: false });
 
-    if (!savedPost?.uuid && !editingPostUuid.value) {
+    if (!savedPost?.uuid || composerFingerprint() !== savedComposerFingerprint.value) {
+        if (savedPost) scheduleError.value = 'Your draft changed while saving. Review it and schedule again.';
         return;
     }
 
@@ -5446,7 +5358,7 @@ const closePostDetail = () => {
     postDetailLoading.value = false;
 };
 
-const editPost = async (uuid, originView = '') => {
+const loadPostIntoComposer = async (uuid, originView = '') => {
     draftSaving.value = true;
     draftError.value = '';
     contextualEditOrigin.value = originView && originView !== 'posts' ? originView : '';
@@ -5474,12 +5386,19 @@ const editPost = async (uuid, originView = '') => {
                 }),
         );
         draftTagIds.value = detail.tags;
+        draftScheduleOriginalInstant.value = detail.scheduled_at;
         draftScheduledAt.value = toDateTimeLocal(detail.scheduled_at);
+        savedComposerFingerprint.value = composerFingerprint();
     } catch (error) {
         draftError.value = String(error);
     } finally {
         draftSaving.value = false;
     }
+};
+
+const editPost = (uuid, originView = '') => {
+    if (uuid === editingPostUuid.value) { openComposer(); return; }
+    return replaceComposer(() => loadPostIntoComposer(uuid, originView));
 };
 
 const editSelectedPostFromDetail = async () => {
@@ -5509,7 +5428,6 @@ const duplicatePost = async (uuid) => {
 
     try {
         await invoke('duplicate_post', { uuid });
-        resetDraftEditor();
         await load();
     } catch (error) {
         draftError.value = String(error);
@@ -5627,6 +5545,8 @@ const schedulePost = async (post) => {
         scheduleError.value = 'Schedule time is required';
         return;
     }
+    const parsed = parseSchedule(scheduledAt, schedulingTimezone.value, post.scheduled_at);
+    if (!parsed.date) { scheduleError.value = parsed.error; return; }
 
     scheduleSaving.value = true;
     scheduleError.value = '';
@@ -5635,7 +5555,7 @@ const schedulePost = async (post) => {
         await invoke(post.status === 'failed' ? 'retry_failed_post' : 'schedule_post', {
             uuid: post.uuid,
             schedule: {
-                scheduled_at: new Date(scheduledAt).toISOString(),
+                scheduled_at: parsed.date.toISOString(),
             },
         });
 
@@ -5749,10 +5669,12 @@ const postTime = (post) => {
         return '';
     }
 
-    return value.slice(11, 16);
+    return formatWorkspaceTimestamp(value, settings.value, { timeOnly: true });
 };
 
 watch(activeView, async (view) => {
+    window.scrollTo(0, 0);
+
     if (view === 'posts' || view === 'calendar') {
         await loadPostQuery();
     }
@@ -5830,13 +5752,35 @@ const postWindowLabel = computed(() => {
         return '';
     }
 
-    return `${window.start_date} to ${window.end_date}`;
+    return `${formatDateOnly(window.start_date, settings.value?.date_format)} to ${formatDateOnly(window.end_date, settings.value?.date_format)} · ${schedulingTimezone.value}`;
 });
 
+const openComposer = () => {
+    activeView.value = 'posts';
+    activePostsMode.value = 'compose';
+};
+
+const displayReportPeriod = (period) => String(period || '').replaceAll('_', ' ');
+const schedulingTimezone = computed(() => settings.value?.timezone || 'UTC');
+
+watch(schedulingTimezone, (zone, previousZone) => {
+    if (!previousZone || zone === previousZone) return;
+    const wasSaved = composerFingerprint() === savedComposerFingerprint.value;
+    const schedule = parseSchedule(draftScheduledAt.value, previousZone, draftScheduleOriginalInstant.value);
+    if (schedule.date) {
+        draftScheduleOriginalInstant.value = schedule.date.toISOString();
+        draftScheduledAt.value = localDateTime(schedule.date, zone);
+        if (wasSaved) savedComposerFingerprint.value = composerFingerprint();
+    }
+    closePostScheduleEditor();
+}, { flush: 'sync' });
+
 onMounted(async () => {
-    restoreComposerDraft();
     void checkSoftwareUpdate({ silent: true });
     await load();
+    restoreComposerDraft();
+    composerRecoveryReady = true;
+    workspaceReady.value = true;
     startWorkerLoop();
     runAutoWorkerTick();
     runAutoMaintenanceTick();
@@ -5846,6 +5790,7 @@ onUnmounted(() => {
     confirmationResolver?.(false);
     confirmationResolver = null;
     draftEditor.value?.destroy();
+    localAiOperation.cancel();
     stopWorkerLoop();
 });
 </script>
@@ -5863,6 +5808,9 @@ onUnmounted(() => {
                 </div>
             </div>
             <nav class="sidebar-nav" aria-label="Main navigation">
+                <button type="button" class="sidebar-create-post" :disabled="!workspaceReady" @click="openComposer">
+                    <span>{{ composerHasDraftContent() ? 'Continue draft' : 'Create post' }}</span>
+                </button>
                 <section v-for="group in navigationGroups" :key="group.label" class="sidebar-nav-group">
                     <p>{{ group.label }}</p>
                     <button
@@ -5901,11 +5849,20 @@ onUnmounted(() => {
                 </div>
             </header>
 
-            <div v-if="loadError" class="error-panel">
+            <div v-if="loadError" class="error-panel" role="alert">
                 {{ loadError }}
             </div>
-
+            <div v-else-if="!workspaceReady" class="panel" role="status" aria-live="polite">
+                Loading your local workspace…
+            </div>
             <template v-else>
+                <section v-if="activeView === 'dashboard' && !snapshot.accounts.length" class="panel onboarding-panel">
+                    <div>
+                        <h2>Connect your first account</h2>
+                        <p>Choose a social platform to get started. You can also write a draft before connecting.</p>
+                    </div>
+                    <button type="button" @click="activeView = 'connections'; activeConnectionTab = 'accounts'; openAddAccountModal()">Add account</button>
+                </section>
                 <section v-if="attentionNotices.length" class="attention-strip" aria-label="Workspace attention">
                     <article
                         v-for="notice in attentionNotices"
@@ -5969,7 +5926,7 @@ onUnmounted(() => {
                                     <span>{{ providerDisplayName(account.provider) }}</span>
                                 </button>
                             </div>
-                            <div class="dashboard-period-tabs" role="tablist" aria-label="Report period">
+                            <div v-tab-navigation class="dashboard-period-tabs" role="tablist" aria-label="Report period">
                                 <button
                                     v-for="period in ['7_days', '30_days', '90_days']"
                                     :key="period"
@@ -5989,14 +5946,15 @@ onUnmounted(() => {
                     <div v-else-if="reportError" class="form-error">{{ reportError }}</div>
                     <div v-else-if="!report" class="empty-row">No account report available yet</div>
                     <div v-else class="report-layout">
+                        <ReportDataStatus v-bind="reportDataStatus" @import="importAccountData(activeReportAccount)" />
                         <div class="report-provider-panel">
                             <div class="report-kicker">
-                                {{ activeReportAccount?.name || activeReportAccount?.username || report.provider }} · {{ report.period }}
+                                {{ activeReportAccount?.name || activeReportAccount?.username || providerDisplayName(report.provider) }} · {{ displayReportPeriod(report.period) }}
                             </div>
                             <div v-if="providerReportCards.length" class="report-card-grid">
                                 <article v-for="metric in providerReportCards" :key="metric.key" class="report-card">
                                     <span>{{ metric.label }}</span>
-                                    <strong>{{ metric.value }}</strong>
+                                    <strong>{{ formatObservation(metric.value) }}</strong>
                                     <small>{{ metric.description }}</small>
                                 </article>
                             </div>
@@ -6006,14 +5964,14 @@ onUnmounted(() => {
                             <div class="report-kicker">Audience</div>
                             <div v-if="reportAudienceSummary" class="report-chart-summary">
                                 <div>
-                                    <span>Selected</span>
+                                    <span>{{ activeReportAudienceIndex === null ? 'Latest observed' : 'Selected' }}</span>
                                     <strong>{{ formatNumber(activeReportAudiencePoint?.value) }}</strong>
                                     <small>{{ activeReportAudiencePoint?.label }}</small>
                                 </div>
                                 <div>
                                     <span>Change</span>
                                     <strong>{{ formatDelta(reportAudienceSummary.change) }}</strong>
-                                    <small>{{ report.period }}</small>
+                                    <small>First to last observed</small>
                                 </div>
                                 <div>
                                     <span>High</span>
@@ -6023,7 +5981,7 @@ onUnmounted(() => {
                                 <div>
                                     <span>Average</span>
                                     <strong>{{ formatNumber(reportAudienceSummary.average) }}</strong>
-                                    <small>Daily mean</small>
+                                    <small>{{ reportAudienceSummary.observations }} observed days</small>
                                 </div>
                             </div>
                             <AudienceLineChart
@@ -6050,7 +6008,7 @@ onUnmounted(() => {
                         <div v-for="post in dashboard.upcoming_posts" :key="post.uuid" class="snapshot-row">
                             <div>
                                 <strong>{{ post.preview || 'Untitled post' }}</strong>
-                                <small>{{ post.scheduled_at || post.updated_at }} · {{ post.account_count }} account(s)</small>
+                                <small>{{ formatTimestamp(post.scheduled_at || post.updated_at) }} · {{ post.account_count }} account(s)</small>
                             </div>
                             <span class="mini-state">{{ post.status }}</span>
                         </div>
@@ -6068,7 +6026,7 @@ onUnmounted(() => {
                         <div v-for="post in dashboard.failed_posts" :key="post.uuid" class="snapshot-row">
                             <div>
                                 <strong>{{ post.preview || 'Untitled post' }}</strong>
-                                <small>{{ post.updated_at }} · {{ post.account_count }} account(s)</small>
+                                <small>{{ formatTimestamp(post.updated_at) }} · {{ post.account_count }} account(s)</small>
                             </div>
                             <span class="mini-state is-error">{{ post.status }}</span>
                         </div>
@@ -6085,7 +6043,7 @@ onUnmounted(() => {
                         <div v-if="!dashboard.providers.length" class="empty-row">No accounts connected</div>
                         <div v-for="provider in dashboard.providers" :key="provider.provider" class="snapshot-row">
                             <div>
-                                <strong>{{ provider.provider }}</strong>
+                                <strong>{{ providerDisplayName(provider.provider) }}</strong>
                                 <small>{{ provider.authorized_accounts }}/{{ provider.accounts }} authorized</small>
                             </div>
                             <span class="mini-state">{{ provider.accounts }}</span>
@@ -6320,7 +6278,7 @@ onUnmounted(() => {
                 </details>
 
                 <section v-if="activeView === 'reports'" class="panel">
-                    <div class="panel-heading">
+                    <div class="panel-heading report-heading">
                         <div>
                             <h2>Analytics</h2>
                             <p>Audience and provider metrics for connected social accounts.</p>
@@ -6328,19 +6286,19 @@ onUnmounted(() => {
                         <div class="report-selects">
                             <select
                                 v-model="reportAccountId"
-                                class="period-select"
+                                class="period-select select-wide"
                                 aria-label="Report account"
                                 :disabled="reportLoading || !snapshot.accounts.length"
                                 @change="loadReport(reportAccountId)"
                             >
                                 <option v-if="!snapshot.accounts.length" value="">Connect an account first</option>
                                 <option v-for="account in snapshot.accounts" :key="account.uuid" :value="account.id">
-                                    {{ account.provider }} · {{ account.username || account.name }}
+                                    {{ providerDisplayName(account.provider) }} · {{ account.username || account.name }}
                                 </option>
                             </select>
                             <select
                                 v-model="reportPeriod"
-                                class="period-select"
+                                class="period-select select-compact"
                                 aria-label="Report period"
                                 :disabled="reportLoading || !snapshot.accounts.length"
                                 @change="loadReport()"
@@ -6365,22 +6323,23 @@ onUnmounted(() => {
                         </button>
                     </div>
                     <div v-else class="report-layout">
+                        <ReportDataStatus v-bind="reportDataStatus" @import="importAccountData(activeReportAccount)" />
                         <div class="report-provider-panel">
-                            <div class="report-kicker">{{ report.provider }} · {{ report.period }}</div>
+                            <div class="report-kicker">{{ providerDisplayName(report.provider) }} · {{ displayReportPeriod(report.period) }}</div>
                             <div v-if="report.provider === 'twitter' && report.tier === 'free'" class="form-warning">
                                 Free-tier X reports may be limited.
                             </div>
                             <div v-if="providerReportCards.length" class="report-card-grid">
                                 <article v-for="metric in providerReportCards" :key="metric.key" class="report-card">
                                     <span>{{ metric.label }}</span>
-                                    <strong>{{ metric.value }}</strong>
+                                    <strong>{{ formatObservation(metric.value) }}</strong>
                                     <small>{{ metric.description }}</small>
                                 </article>
                             </div>
                             <div v-else-if="report.metrics.length" class="report-card-grid">
                                 <article v-for="metric in report.metrics" :key="metric.key" class="report-card">
                                     <span>{{ metric.key.replaceAll('_', ' ') }}</span>
-                                    <strong>{{ metric.value }}</strong>
+                                    <strong>{{ formatObservation(metric.value) }}</strong>
                                 </article>
                             </div>
                             <div v-else class="empty-row">No metrics for this provider</div>
@@ -6390,14 +6349,14 @@ onUnmounted(() => {
                             <p>The number of followers per day during the selected period.</p>
                             <div v-if="reportAudienceSummary" class="report-chart-summary">
                                 <div>
-                                    <span>Selected</span>
+                                    <span>{{ activeReportAudienceIndex === null ? 'Latest observed' : 'Selected' }}</span>
                                     <strong>{{ formatNumber(activeReportAudiencePoint?.value) }}</strong>
                                     <small>{{ activeReportAudiencePoint?.label }}</small>
                                 </div>
                                 <div>
                                     <span>Change</span>
                                     <strong>{{ formatDelta(reportAudienceSummary.change) }}</strong>
-                                    <small>{{ report.period }}</small>
+                                    <small>First to last observed</small>
                                 </div>
                                 <div>
                                     <span>High</span>
@@ -6407,7 +6366,7 @@ onUnmounted(() => {
                                 <div>
                                     <span>Average</span>
                                     <strong>{{ formatNumber(reportAudienceSummary.average) }}</strong>
-                                    <small>Daily mean</small>
+                                    <small>{{ reportAudienceSummary.observations }} observed days</small>
                                 </div>
                             </div>
                             <AudienceLineChart
@@ -6422,13 +6381,6 @@ onUnmounted(() => {
                 </section>
 
                 <section v-if="activeView === 'calendar'" class="panel">
-                    <div class="panel-heading">
-                        <div>
-                            <h2>Calendar</h2>
-                            <p>Review scheduled, published, failed, and draft posts by date, account, tag, and content.</p>
-                        </div>
-                        <div class="status-pill">{{ postQuery.total }} posts</div>
-                    </div>
                     <div class="calendar-toolbar">
                         <div class="row-actions">
                             <button type="button" class="inline-button" :disabled="postQueryLoading" @click="moveCalendar(-1)">
@@ -6442,7 +6394,7 @@ onUnmounted(() => {
                             </button>
                         </div>
                         <strong>{{ calendarTitle }}</strong>
-                        <div class="status-tabs is-compact" role="tablist" aria-label="Calendar range">
+                        <div v-tab-navigation class="status-tabs is-compact" role="tablist" aria-label="Calendar range">
                             <button type="button" role="tab" :aria-selected="postFilter.calendar_type === 'month'" :class="{ 'is-active': postFilter.calendar_type === 'month' }" @click="postFilter.calendar_type = 'month'; applyPostFilters()">Month</button>
                             <button type="button" role="tab" :aria-selected="postFilter.calendar_type === 'week'" :class="{ 'is-active': postFilter.calendar_type === 'week' }" @click="postFilter.calendar_type = 'week'; applyPostFilters()">Week</button>
                             <button type="button" role="tab" :aria-selected="postFilter.calendar_type === 'day'" :class="{ 'is-active': postFilter.calendar_type === 'day' }" @click="postFilter.calendar_type = 'day'; applyPostFilters()">Day</button>
@@ -6550,6 +6502,7 @@ onUnmounted(() => {
                                     <button
                                         type="button"
                                         class="calendar-week-add"
+                                        :aria-label="`Create post on ${cell.date} at ${slot.label} (${schedulingTimezone})`"
                                         @click="createPostFromCalendarSlot(cell.date, slot.hour)"
                                     >
                                         {{ slot.label }}
@@ -6570,24 +6523,19 @@ onUnmounted(() => {
                     <div v-if="postFilter.calendar_type === 'month'" class="calendar-weekday-row">
                         <span v-for="label in calendarWeekdayLabels" :key="label">{{ label }}</span>
                     </div>
-                    <div v-if="calendarCells.length && postFilter.calendar_type !== 'week'" :class="['calendar-grid', `is-${postFilter.calendar_type}`]">
+                    <div v-if="calendarCells.length && postFilter.calendar_type === 'month'" class="calendar-grid is-month">
                         <article
                             v-for="cell in calendarCells"
                             :key="cell.date"
-                            role="button"
-                            tabindex="0"
                             :class="['calendar-cell', {
                                 'is-selected': cell.is_selected,
                                 'is-outside': !cell.is_current_month && postFilter.calendar_type === 'month',
                             }]"
-                            @click="selectCalendarDate(cell.date)"
-                            @keydown.enter.prevent="selectCalendarDate(cell.date)"
-                            @keydown.space.prevent="selectCalendarDate(cell.date)"
                         >
-                            <span class="calendar-cell-date">
+                            <button type="button" class="calendar-cell-date" :aria-label="`Select ${cell.date}`" :aria-pressed="cell.is_selected" @click="selectCalendarDate(cell.date)">
                                 <strong>{{ cell.day_number }}</strong>
                                 <small>{{ cell.weekday }}</small>
-                            </span>
+                            </button>
                             <span v-if="!cell.posts.length" class="calendar-empty-slot">No posts</span>
                             <button
                                 v-for="post in cell.posts.slice(0, 4)"
@@ -6598,19 +6546,27 @@ onUnmounted(() => {
                             >
                                 {{ postTime(post) }} · {{ post.preview || post.uuid }}
                             </button>
-                            <span v-if="cell.posts.length > 4" class="calendar-more-chip">
+                            <button v-if="cell.posts.length > 4" type="button" class="calendar-more-chip" :aria-label="`View all ${cell.posts.length} posts on ${cell.date}`" @click="postFilter.calendar_type = 'day'; selectCalendarDate(cell.date)">
                                 +{{ cell.posts.length - 4 }} more
-                            </span>
+                            </button>
                         </article>
                     </div>
                     <div v-if="!postQueryError && !postGroups.length" class="empty-row">No matching posts</div>
                     <div v-else-if="!postQueryError" class="agenda-list">
+                        <div class="pagination-controls">
+                            <span role="status">{{ calendarAgenda.start }}–{{ calendarAgenda.end }} of {{ calendarAgenda.total }} posts in this calendar range</span>
+                            <div v-if="calendarAgenda.pages > 1" class="row-actions">
+                                <button type="button" class="inline-button" :disabled="calendarAgenda.page === 1" @click="calendarAgendaPage = calendarAgenda.page - 1">Previous posts</button>
+                                <span>Page {{ calendarAgenda.page }} of {{ calendarAgenda.pages }}</span>
+                                <button type="button" class="inline-button" :disabled="calendarAgenda.page === calendarAgenda.pages" @click="calendarAgendaPage = calendarAgenda.page + 1">Next posts</button>
+                            </div>
+                        </div>
                         <section v-for="group in postGroups" :key="group.date" class="agenda-day">
-                            <div class="agenda-date">{{ group.date }}</div>
+                            <div class="agenda-date">{{ formatDateOnly(group.date, settings?.date_format) }}</div>
                             <div class="agenda-posts">
                                 <div v-for="post in group.posts" :key="post.uuid" class="agenda-post">
                                     <label class="post-select">
-                                        <input v-model="selectedPostUuids" type="checkbox" :value="post.uuid" />
+                                        <input v-model="selectedPostUuids" type="checkbox" :value="post.uuid" :aria-label="`Select post: ${post.preview || post.uuid}`" />
                                     </label>
                                     <div class="agenda-time">{{ postTime(post) }}</div>
                                     <div>
@@ -6645,10 +6601,18 @@ onUnmounted(() => {
                                     <button
                                         type="button"
                                         class="inline-button"
-                                        @click="copyAccountOnboardingTemplate"
+                                        @click="openAddAccountModal()"
                                     >
-                                        {{ accountOnboardingCopied === 'template' ? 'Copied CSV' : 'Copy Intake CSV' }}
+                                        Add Account
                                     </button>
+                                    <span>{{ snapshot.accounts.length }}</span>
+                                </div>
+                            </header>
+                            <details class="secondary-tools">
+                                <summary>Operator tools</summary>
+                                <p class="form-note">Reusable setup handoffs and background imports for managing multiple accounts.</p>
+                                <div class="row-actions">
+                                    <button type="button" class="inline-button" @click="copyAccountOnboardingTemplate">{{ accountOnboardingCopied === 'template' ? 'Copied CSV' : 'Copy Intake CSV' }}</button>
                                     <button
                                         type="button"
                                         class="inline-button"
@@ -6659,27 +6623,21 @@ onUnmounted(() => {
                                     <button
                                         type="button"
                                         class="inline-button"
-                                        @click="openAddAccountModal()"
-                                    >
-                                        Add Account
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-button"
                                         :disabled="queueAllImportsRunning || connectedImportAccountCount === 0"
                                         @click="queueAllAccountImports"
                                     >
                                         Queue All Imports
                                     </button>
-                                    <span>{{ snapshot.accounts.length }}</span>
                                 </div>
-                            </header>
+                            </details>
                             <div
                                 v-if="addAccountModalOpen"
+                                v-dialog-focus
                                 class="modal-backdrop"
                                 role="dialog"
                                 aria-modal="true"
                                 aria-labelledby="add-account-title"
+                                @keydown.esc.stop.prevent="closeAddAccountModal"
                                 @click.self="closeAddAccountModal"
                             >
                                 <div class="account-add-modal">
@@ -6962,15 +6920,17 @@ onUnmounted(() => {
                                         >
                                             Import
                                         </button>
+                                        <details v-if="accountImportSupported(account)" class="secondary-tools">
+                                        <summary>More</summary>
                                         <button
-                                            v-if="accountImportSupported(account)"
                                             type="button"
                                             class="inline-button"
                                             :disabled="accountQueuingUuid === account.uuid"
                                             @click="queueAccountImport(account.uuid)"
                                         >
-                                            Queue
+                                            Queue background import
                                         </button>
+                                        </details>
                                         <button type="button" class="danger-inline-button" :disabled="accountSaving" @click="deleteAccount(account.uuid)">
                                             Disconnect
                                         </button>
@@ -7038,7 +6998,7 @@ onUnmounted(() => {
                             <div v-if="serviceSetupCopied === 'bundle:all' || serviceSetupCopied === 'bundle:missing'" class="form-note">
                                 Provider setup packet copied without secret values.
                             </div>
-                            <div class="service-tab-list" role="tablist" aria-label="Third party services">
+                            <div v-tab-navigation class="service-tab-list" role="tablist" aria-label="Third party services">
                                 <button
                                     v-for="service in serviceDefinitions"
                                     :key="service.id"
@@ -7334,7 +7294,7 @@ onUnmounted(() => {
                                 label="Post workspace"
                             />
                             <div v-show="activePostsMode === 'library'" class="post-library-controls">
-                            <div class="status-tabs" role="tablist" aria-label="Post status">
+                            <div v-tab-navigation class="status-tabs" role="tablist" aria-label="Post status">
                                 <button type="button" role="tab" :aria-selected="!postFilter.status" :class="{ 'is-active': !postFilter.status }" @click="setPostStatusFilter('')">All</button>
                                 <button type="button" role="tab" :aria-selected="postFilter.status === 'draft'" :class="{ 'is-active': postFilter.status === 'draft' }" @click="setPostStatusFilter('draft')">Drafts</button>
                                 <button type="button" role="tab" :aria-selected="postFilter.status === 'scheduled'" :class="{ 'is-active': postFilter.status === 'scheduled' }" @click="setPostStatusFilter('scheduled')">Scheduled</button>
@@ -7400,10 +7360,10 @@ onUnmounted(() => {
                             </div>
                             </div>
                             <div v-show="activePostsMode === 'compose'" class="post-composer-workspace">
-                            <form class="draft-form" @submit.prevent="saveDraftPost">
+                            <form class="draft-form" :inert="draftSaving || scheduleSaving" :aria-busy="draftSaving || scheduleSaving" @submit.prevent="saveDraftPost">
                                 <div v-if="editingPostUuid" class="editor-state">
                                     <div class="editor-state-copy">
-                                        <span>Editing {{ editingPostUuid }}</span>
+                                        <span>Editing saved draft</span>
                                         <small v-if="contextualEditOrigin">Opened from {{ contextualEditOriginLabel }}</small>
                                     </div>
                                     <div class="row-actions">
@@ -7415,7 +7375,7 @@ onUnmounted(() => {
                                         >
                                             Back to {{ contextualEditOriginLabel }}
                                         </button>
-                                        <button type="button" class="inline-button" @click="resetDraftEditor">
+                                        <button type="button" class="inline-button" @click="discardComposer">
                                             Cancel editing
                                         </button>
                                     </div>
@@ -7424,11 +7384,11 @@ onUnmounted(() => {
                                     <header class="composer-section-header">
                                         <div>
                                             <strong>Accounts</strong>
-                                            <small>{{ selectedDraftAccounts.length }} selected</small>
+                                            <small>{{ selectedDraftAccounts.length ? `${selectedDraftAccounts.length} account${selectedDraftAccounts.length === 1 ? '' : 's'} selected` : 'Choose where to publish, or save a draft first' }}</small>
                                         </div>
-                                        <span class="mini-state">{{ draftVersionCount }} version{{ draftVersionCount === 1 ? '' : 's' }}</span>
+                                        <button v-if="snapshot.accounts.length" type="button" class="inline-button" :aria-expanded="draftAccountPickerOpen || !selectedDraftAccounts.length" aria-controls="draft-account-picker" @click="draftAccountPickerOpen = !draftAccountPickerOpen">{{ draftAccountPickerOpen ? 'Done' : 'Choose accounts' }}</button>
                                     </header>
-                                    <div v-if="snapshot.accounts.length" class="account-picker-grid" aria-label="Post accounts">
+                                    <div v-if="snapshot.accounts.length" v-show="draftAccountPickerOpen || !selectedDraftAccounts.length" id="draft-account-picker" class="account-picker-grid" aria-label="Post accounts">
                                         <label
                                             v-for="account in snapshot.accounts"
                                             :key="account.uuid"
@@ -7464,7 +7424,10 @@ onUnmounted(() => {
                                             </span>
                                         </label>
                                     </div>
-                                    <p v-else class="empty-inline">No connected accounts</p>
+                                    <div v-else class="empty-action-row">
+                                        <span>No connected accounts.</span>
+                                        <button type="button" class="inline-button" @click="openAddAccountModal()">Connect an account</button>
+                                    </div>
                                     <div v-if="draftProviderWarnings.length" class="form-warning">
                                         <span v-for="warning in draftProviderWarnings" :key="warning">{{ warning }}</span>
                                     </div>
@@ -7472,7 +7435,7 @@ onUnmounted(() => {
                                 <div class="composer-panel">
                                     <header class="composer-section-header">
                                         <div>
-                                            <strong>Versions</strong>
+                                            <strong>Post content</strong>
                                             <small>{{ activeDraftVersionTab.sublabel }}</small>
                                         </div>
                                         <span :class="['mini-state', { 'is-error': activeDraftOverLimit }]">{{ activeDraftCharacterLabel }}</span>
@@ -7519,7 +7482,7 @@ onUnmounted(() => {
                                     >
                                         Create version for {{ availableDraftVersionAccounts[0].name || availableDraftVersionAccounts[0].username || providerDisplayName(availableDraftVersionAccounts[0].provider) }}
                                     </button>
-                                    <div class="composer-version-tabs" role="tablist" aria-label="Post versions">
+                                    <div v-if="draftVersionCount > 1" v-tab-navigation class="composer-version-tabs" role="tablist" aria-label="Post versions">
                                         <div
                                             v-for="tab in draftVersionTabs"
                                             :key="tab.key"
@@ -7550,7 +7513,7 @@ onUnmounted(() => {
                                         </div>
                                     </div>
                                     <div class="version-editor">
-                                        <span class="version-editor-header">
+                                        <span v-if="draftVersionCount > 1" class="version-editor-header">
                                             <span>
                                                 <strong>{{ activeDraftVersionTab.label }}</strong>
                                                 <small>{{ activeDraftVersionTab.sublabel }}</small>
@@ -7566,10 +7529,11 @@ onUnmounted(() => {
                                                     Redo
                                                 </button>
                                                 <div class="emoji-picker-wrap">
-                                                    <button type="button" :disabled="!draftEditor" title="Emoji" @click="emojiPickerOpen = !emojiPickerOpen">
+                                                    <button ref="emojiPickerButton" type="button" :disabled="!draftEditor" title="Emoji" :aria-expanded="emojiPickerOpen" aria-haspopup="dialog" aria-controls="composer-emoji-picker" @click="emojiPickerOpen ? closeEmojiPicker() : emojiPickerOpen = true">
                                                         Emoji
                                                     </button>
-                                                    <div v-if="emojiPickerOpen" class="emoji-popover" aria-label="Emoji picker">
+                                                    <!-- The picker handles Enter; suppress its default before focus moves into the editor. -->
+                                                    <div v-if="emojiPickerOpen" id="composer-emoji-picker" class="emoji-popover" role="dialog" aria-label="Emoji picker" @keydown.esc.capture.stop.prevent="closeEmojiPicker()" @keydown.enter.capture.prevent>
                                                         <EmojiPickerPanel @select="insertDraftEmoji" />
                                                     </div>
                                                 </div>
@@ -7667,7 +7631,9 @@ onUnmounted(() => {
                                             </button>
                                         </article>
                                     </div>
-                                    <div v-if="mediaLibrary.length" class="composer-media-library" aria-label="Media library">
+                                    <details v-if="mediaLibrary.length" class="secondary-tools">
+                                    <summary>Browse media library · {{ mediaLibrary.length }} items</summary>
+                                    <div class="composer-media-library" aria-label="Media library">
                                         <label
                                             v-for="item in mediaLibrary.slice(0, 12)"
                                             :key="item.uuid"
@@ -7688,7 +7654,7 @@ onUnmounted(() => {
                                             </span>
                                         </label>
                                     </div>
-                                    <p v-else class="empty-inline">No media in library</p>
+                                    </details>
                                     <div v-if="mediaError" class="form-error">{{ mediaError }}</div>
                                     <div v-if="mediaProgress" class="form-note">{{ mediaProgress }}</div>
                                 </div>
@@ -7704,7 +7670,7 @@ onUnmounted(() => {
                                             <strong>{{ draftScheduleLabel }}</strong>
                                             <small>{{ draftScheduledAt ? 'Scheduled time' : 'No scheduled time' }}</small>
                                         </span>
-                                        <input v-model="draftScheduledAt" class="schedule-input" type="datetime-local" />
+                                        <input v-model="draftScheduledAt" class="schedule-input" type="datetime-local" :aria-label="`Schedule date and time (${schedulingTimezone})`" aria-describedby="schedule-help" />
                                         <button
                                             v-if="draftScheduledAt"
                                             type="button"
@@ -7716,7 +7682,8 @@ onUnmounted(() => {
                                         </button>
                                     </div>
                                     <div class="draft-action-buttons">
-                                        <span v-if="draftError || scheduleError" class="form-error">{{ draftError || scheduleError }}</span>
+                                        <span role="status" class="form-note">{{ composerSaveStatus }}</span>
+                                        <span v-if="draftError || scheduleError || draftScheduleResult.error" class="form-error" role="alert">{{ draftError || scheduleError || draftScheduleResult.error }}</span>
                                         <button type="submit" :disabled="draftSaving || !canSaveDraft">{{ draftSubmitLabel }}</button>
                                         <button
                                             v-if="draftScheduledAt"
@@ -7735,14 +7702,17 @@ onUnmounted(() => {
                                             Post now
                                         </button>
                                     </div>
+                                    <p id="schedule-help" class="schedule-help">Scheduling timezone: {{ schedulingTimezone }} (change in Settings). Keep Dust Wave Social open and your Mac awake and online for scheduled posts to publish.</p>
                                 </div>
                             </form>
                             <div
                                 v-if="postNowConfirmationOpen"
+                                v-dialog-focus
                                 class="modal-backdrop"
                                 role="dialog"
                                 aria-modal="true"
                                 aria-labelledby="post-now-title"
+                                @keydown.esc.stop.prevent="postNowConfirmationOpen = false"
                                 @click.self="postNowConfirmationOpen = false"
                             >
                                 <div class="post-now-modal">
@@ -7771,6 +7741,9 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                             </div>
+                            <aside class="composer-preview" aria-label="Post preview">
+                            <h3>Preview</h3>
+                            <p class="form-note">An approximation of your post. Check each account’s requirements before publishing.</p>
                             <div v-if="compactEditorText(draftBody) || draftMediaIds.length || draftExternalMedia.length || selectedDraftAccounts.length" class="provider-preview-grid">
                                 <ProviderPreviewCard
                                     v-for="preview in draftPreviewCards"
@@ -7778,6 +7751,8 @@ onUnmounted(() => {
                                     :preview="preview"
                                 />
                             </div>
+                            <p v-else class="empty-inline">Your post preview will appear as you write.</p>
+                            </aside>
                             <div v-if="validationError" class="form-error">{{ validationError }}</div>
                             <div v-if="validationReport" :class="['validation-panel', validationReport.valid ? 'is-ok' : 'is-error']">
                                 <strong>{{ validationReport.valid ? 'Ready to schedule' : 'Validation issues' }}</strong>
@@ -7824,6 +7799,7 @@ onUnmounted(() => {
                                         <input
                                             type="checkbox"
                                             :checked="allVisiblePostsSelected"
+                                            aria-label="Select all posts on this page"
                                             @change="toggleVisiblePostSelection"
                                         />
                                     </label>
@@ -7832,15 +7808,14 @@ onUnmounted(() => {
                                     <span>Media</span>
                                     <span>Labels</span>
                                     <span>Accounts</span>
-                                    <span></span>
                                 </div>
                                 <div v-for="post in postQuery.items" :key="post.uuid" class="post-index-row">
                                     <label class="post-select">
-                                        <input v-model="selectedPostUuids" type="checkbox" :value="post.uuid" />
+                                        <input v-model="selectedPostUuids" type="checkbox" :value="post.uuid" :aria-label="`Select post: ${post.preview || post.uuid}`" />
                                     </label>
                                     <div>
                                         <span class="mini-state">{{ post.status }}</span>
-                                        <small>{{ post.scheduled_at || post.published_at || post.updated_at }}</small>
+                                        <small>{{ formatTimestamp(post.scheduled_at || post.published_at || post.updated_at) }}</small>
                                     </div>
                                     <div class="post-index-content">
                                         <strong>{{ post.preview || post.uuid }}</strong>
@@ -7866,7 +7841,7 @@ onUnmounted(() => {
                                     </div>
                                     <div class="post-account-stack">
                                         <span v-for="account in post.accounts.slice(0, 3)" :key="account.uuid" class="account-chip">
-                                            {{ account.provider }} · {{ account.username || account.name }}
+                                            {{ providerDisplayName(account.provider) }} · {{ account.username || account.name }}
                                         </span>
                                         <span v-if="post.accounts.length > 3" class="mini-state">+{{ post.accounts.length - 3 }}</span>
                                     </div>
@@ -7965,11 +7940,11 @@ onUnmounted(() => {
                                         Import Files
                                     </button>
                                     <button type="button" class="inline-button" :disabled="mediaSaving" @click="cleanupMediaFiles">
-                                        Clean
+                                        Remove orphaned files
                                     </button>
                                 </div>
                             </header>
-                            <div class="status-tabs" role="tablist" aria-label="Media source">
+                            <div v-tab-navigation class="status-tabs" role="tablist" aria-label="Media source">
                                 <button
                                     v-for="tab in mediaTabs"
                                     :key="tab.id"
@@ -7989,9 +7964,10 @@ onUnmounted(() => {
                                         <small>{{ localAiRuntime.detail }}</small>
                                     </div>
                                     <span :class="['mini-state', localAiRuntime.status === 'ready' ? 'is-ok' : 'is-muted']">
-                                        {{ localAiRuntime.accelerator }}
+                                        {{ localAiRuntime.status === 'ready' ? 'Ready' : localAiRuntime.status === 'error' ? 'Unavailable' : 'On demand' }}
                                     </span>
                                 </header>
+                                <p class="form-note">4× AI upscaling supports static images up to {{ LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE }} × {{ LOCAL_AI_UPSCALE_MAX_SOURCE_EDGE }}px. Processing stays on your Mac and saves a separate image; originals are never replaced.</p>
                                 <div class="local-ai-controls">
                                     <button type="button" class="inline-button" :disabled="localAiBusy" @click="probeLocalAiRuntime">
                                         Probe LiteRT
@@ -8003,20 +7979,17 @@ onUnmounted(() => {
                                         <option value="story_9_16">9:16</option>
                                     </select>
                                     <form class="local-ai-search-form" @submit.prevent="searchLocalAiMedia">
-                                        <input v-model="localAiSearchQuery" placeholder="Semantic media search" />
+                                        <input v-model="localAiSearchQuery" aria-label="Search local media" placeholder="Search filenames or image properties" />
                                         <button type="submit" :disabled="localAiBusy">Search</button>
                                     </form>
                                 </div>
-                                <div v-if="localAiBusy" class="form-note local-ai-progress">
-                                    <span>{{ localAiResult?.detail || 'Local AI operation running' }}</span>
-                                    <button type="button" class="inline-button" @click="cancelLocalAiOperation">Cancel</button>
-                                </div>
-                                <div v-if="localAiError" class="form-error">{{ localAiError }}</div>
-                                <div v-if="localAiResult?.status === 'complete'" class="form-note">
-                                    {{ localAiResult.operation }} complete
-                                    <span v-if="localAiResult.result?.derivative"> · {{ localAiResult.result.derivative.name }}</span>
-                                    <span v-if="localAiResult.result?.alt_text"> · {{ localAiResult.result.alt_text }}</span>
-                                </div>
+                                <LocalMediaFeedback
+                                    v-model:draft="localAiAltTextDraft"
+                                    :result="localAiResult"
+                                    :error="localAiError"
+                                    :can-cancel="localAiOperationState.canCancel"
+                                    @cancel="cancelLocalAiOperation"
+                                />
                                 <div v-if="localAiResult?.result?.warnings?.length" class="local-ai-warning-list">
                                     <span
                                         v-for="warning in localAiResult.result.warnings"
@@ -8028,7 +8001,7 @@ onUnmounted(() => {
                                 </div>
                                 <div v-if="localAiSearchResults?.matches?.length" class="local-ai-results">
                                     <button
-                                        v-for="match in localAiSearchResults.matches.slice(0, 6)"
+                                        v-for="match in localAiSearchResults.matches.slice(0, LOCAL_MEDIA_SEARCH_PREVIEW_LIMIT)"
                                         :key="match.media.uuid"
                                         type="button"
                                         class="local-ai-result"
@@ -8090,9 +8063,12 @@ onUnmounted(() => {
                                 @dragleave.prevent="mediaDropActive = false"
                                 @drop.prevent="handleMediaDrop"
                             >
-                                <strong>{{ mediaImport.source_path || 'Drop a local media file' }}</strong>
+                                <strong>{{ mediaImport.source_path ? fileNameFromPath(mediaImport.source_path) : 'Drop a local media file' }}</strong>
                                 <small>{{ mediaImport.source_path ? 'Ready to import' : 'Images, GIFs, videos, and files' }}</small>
+                                <button type="button" class="inline-button" :disabled="mediaSaving" @click="importMultipleMediaFiles">Choose files</button>
                             </div>
+                            <details v-if="activeMediaTab === 'uploads'" class="secondary-tools">
+                            <summary>Import from a file path or URL</summary>
                             <form v-if="activeMediaTab === 'uploads'" class="media-import-form" @submit.prevent="importMediaFile">
                                 <input v-model="mediaImport.source_path" aria-label="Local media file path" placeholder="Local file path" />
                                 <button type="button" class="inline-button" :disabled="mediaSaving" @click="chooseMediaImportSource">
@@ -8107,6 +8083,7 @@ onUnmounted(() => {
                                 <input v-model="mediaDownload.source" aria-label="Downloaded media source label" placeholder="Source label" />
                                 <button type="submit" :disabled="mediaSaving">Download</button>
                             </form>
+                            </details>
                             <div v-if="activeMediaTab === 'uploads' && mediaImportResults.length" class="media-import-results">
                                 <div
                                     v-for="result in mediaImportResults"
@@ -8149,7 +8126,7 @@ onUnmounted(() => {
                             <div v-if="activeMediaTab !== 'uploads' && externalMediaResults?.items?.length" class="external-media-results">
                                 <div v-for="item in externalMediaResults.items" :key="item.id" class="external-media-item">
                                     <label class="post-select">
-                                        <input v-model="selectedExternalMediaIds" type="checkbox" :value="item.id" />
+                                        <input v-model="selectedExternalMediaIds" type="checkbox" :value="item.id" :aria-label="`Select media: ${item.name || item.id}`" />
                                     </label>
                                     <img :src="mediaAssetUrl(item.thumb_url)" :alt="item.name" />
                                     <div>
@@ -8192,7 +8169,7 @@ onUnmounted(() => {
                             <div v-for="item in activeMediaTab === 'uploads' ? mediaLibrary : []" :key="item.uuid" class="snapshot-row">
                                 <div class="media-row-main">
                                     <label class="post-select">
-                                        <input v-model="selectedMediaIds" type="checkbox" :value="item.id" />
+                                        <input v-model="selectedMediaIds" type="checkbox" :value="item.id" :aria-label="`Select media: ${item.name || item.uuid}`" />
                                     </label>
                                     <div class="media-thumb">
                                         <img
@@ -8205,8 +8182,9 @@ onUnmounted(() => {
                                     <div>
                                         <strong>{{ item.name }}</strong>
                                         <small>
-                                            {{ item.mime_type }} · {{ formatBytes(item.size_total) }} · {{ item.conversion_count }} conversions · {{ item.path }}
+                                            {{ item.mime_type }} · {{ formatBytes(item.size_total) }}
                                         </small>
+                                        <details class="secondary-tools"><summary>File details</summary><small>{{ item.conversion_count }} conversions · {{ item.path }}</small></details>
                                     </div>
                                 </div>
                                 <div class="row-actions">
@@ -8318,6 +8296,25 @@ onUnmounted(() => {
                         <article class="settings-panel">
                             <header>
                                 <div>
+                                    <h3>Appearance</h3>
+                                    <p>Choose a look, or follow your Mac’s appearance automatically.</p>
+                                </div>
+                            </header>
+                            <label class="settings-row">
+                                <span>Color theme</span>
+                                <select class="select-compact" :value="appearancePreference" @change="setAppearance($event.target.value)">
+                                    <option v-for="option in appearanceOptions" :key="option.value" :value="option.value">
+                                        {{ option.label }}
+                                    </option>
+                                </select>
+                            </label>
+                            <p class="settings-help">Applies immediately and is remembered on this Mac.</p>
+                            <p class="settings-help">Zoom: ⌘+ to enlarge, ⌘− to reduce, and ⌘0 for actual size.</p>
+                            <p v-if="appearanceError" role="status" class="form-warning">{{ appearanceError }}</p>
+                        </article>
+                        <article class="settings-panel">
+                            <header>
+                                <div>
                                     <h3>Local identity</h3>
                                     <p>The operator information used by this local Dust Wave Social workspace.</p>
                                 </div>
@@ -8392,13 +8389,13 @@ onUnmounted(() => {
                             <header>
                                 <div>
                                     <h3>Time settings</h3>
-                                    <p>Calendar and analytics use these display settings.</p>
+                                    <p>Scheduling and display use this timezone. Changing it keeps existing scheduled instants unchanged; provider daily totals retain their reporting dates.</p>
                                 </div>
                                 <span class="mini-state">{{ settingsDraft.timezone || 'Timezone' }}</span>
                             </header>
                             <label class="settings-row">
                                 <span>Timezone</span>
-                                <select v-model="settingsDraft.timezone" aria-label="Timezone">
+                                <select v-model="settingsDraft.timezone" class="select-wide" aria-label="Timezone">
                                     <option v-for="timezone in timezoneOptions" :key="timezone" :value="timezone">
                                         {{ timezone }}
                                     </option>
@@ -8432,7 +8429,7 @@ onUnmounted(() => {
                             </div>
                             <label class="settings-row">
                                 <span>Date display</span>
-                                <select v-model="settingsDraft.date_format" aria-label="Date format">
+                                <select v-model="settingsDraft.date_format" class="select-compact" aria-label="Date format">
                                     <option value="human">Human date</option>
                                     <option value="iso">ISO date</option>
                                 </select>
@@ -8450,7 +8447,7 @@ onUnmounted(() => {
                             <div v-if="snapshot.accounts.length" class="draft-tags">
                                 <label v-for="account in snapshot.accounts" :key="account.uuid">
                                     <input v-model="settingsDraft.default_accounts" type="checkbox" :value="account.id" />
-                                    {{ account.provider }} · {{ account.username || account.name }}
+                                    {{ providerDisplayName(account.provider) }} · {{ account.username || account.name }}
                                 </label>
                             </div>
                             <div v-else class="empty-row">No connected accounts</div>
@@ -8465,6 +8462,7 @@ onUnmounted(() => {
             </template>
         </section>
         <PostDetailModal
+            :settings="settings"
             v-if="selectedPostSummary"
             :summary="selectedPostSummary"
             :detail="selectedPostDetail"
@@ -8487,6 +8485,9 @@ onUnmounted(() => {
             :description="confirmationDialog.description"
             :confirm-label="confirmationDialog.confirmLabel"
             :danger="confirmationDialog.danger"
+            :cancel-label="confirmationDialog.cancelLabel"
+            :secondary-label="confirmationDialog.secondaryLabel"
+            @secondary="resolveConfirmation('save')"
             @cancel="resolveConfirmation(false)"
             @confirm="resolveConfirmation(true)"
         />

@@ -1,7 +1,19 @@
 use std::env;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+#[cfg(debug_assertions)]
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaToolProbe {
+    Available,
+    Unavailable,
+    TimedOut,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaToolSource {
@@ -15,58 +27,86 @@ pub enum MediaToolSource {
 pub struct MediaToolResolution {
     pub command: String,
     pub source: MediaToolSource,
-    pub available: bool,
+    pub probe: MediaToolProbe,
 }
 
 pub fn media_tool_command(env_var: &str, binary: &str) -> String {
-    resolve_media_tool(env_var, binary).command
+    // Choosing a command for real work must not launch an extra version subprocess.
+    select_media_tool(env_var, binary).0
 }
 
 pub fn resolve_media_tool(env_var: &str, binary: &str) -> MediaToolResolution {
+    let (command, source) = select_media_tool(env_var, binary);
+    let probe = probe_command(Command::new(&command).arg("-version"), PROBE_TIMEOUT);
+    MediaToolResolution {
+        command,
+        source,
+        probe,
+    }
+}
+
+fn select_media_tool(env_var: &str, binary: &str) -> (String, MediaToolSource) {
     if let Ok(value) = env::var(env_var) {
         let command = value.trim().to_string();
 
         if !command.is_empty() {
-            return MediaToolResolution {
-                available: command_is_available(&command),
-                command,
-                source: MediaToolSource::ConfiguredEnv,
-            };
+            return (command, MediaToolSource::ConfiguredEnv);
         }
     }
 
     if let Some(command) = bundled_media_tool_path(binary) {
         let command = command.to_string_lossy().to_string();
 
-        return MediaToolResolution {
-            available: command_is_available(&command),
-            command,
-            source: MediaToolSource::Bundled,
-        };
+        return (command, MediaToolSource::Bundled);
     }
 
     if let Some(command) = system_media_tool_path(binary) {
         let command = command.to_string_lossy().to_string();
 
-        return MediaToolResolution {
-            available: command_is_available(&command),
-            command,
-            source: MediaToolSource::SystemPath,
-        };
+        return (command, MediaToolSource::SystemPath);
     }
 
-    MediaToolResolution {
-        available: command_is_available(binary),
-        command: binary.to_string(),
-        source: MediaToolSource::Path,
-    }
+    (binary.to_string(), MediaToolSource::Path)
 }
 
-fn command_is_available(command: &str) -> bool {
-    Command::new(command)
-        .arg("-version")
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn probe_command(command: &mut Command, timeout: Duration) -> MediaToolProbe {
+    // Output is not needed: null streams avoid pipe backpressure and inherited-pipe hangs.
+    let Ok(mut child) = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return MediaToolProbe::Unavailable;
+    };
+    wait_for_probe(&mut child, timeout)
+}
+
+fn wait_for_probe(child: &mut Child, timeout: Duration) -> MediaToolProbe {
+    let started = Instant::now();
+    let outcome = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return if status.success() {
+                    MediaToolProbe::Available
+                } else {
+                    MediaToolProbe::Unavailable
+                };
+            }
+            Err(_) => break MediaToolProbe::Unavailable,
+            Ok(None) => {}
+        }
+        if started.elapsed() >= timeout {
+            break MediaToolProbe::TimedOut;
+        }
+        std::thread::sleep(
+            Duration::from_millis(20).min(timeout.saturating_sub(started.elapsed())),
+        );
+    };
+    // We own this child. Terminate and reap it rather than leaking one on every refresh.
+    let _ = child.kill();
+    let _ = child.wait();
+    outcome
 }
 
 fn bundled_media_tool_path(binary: &str) -> Option<PathBuf> {
@@ -94,6 +134,7 @@ fn bundled_media_tool_candidates(binary: &str) -> Vec<PathBuf> {
         }
     }
 
+    #[cfg(debug_assertions)]
     let staged_binary = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
         .join(format!(
@@ -102,6 +143,7 @@ fn bundled_media_tool_candidates(binary: &str) -> Vec<PathBuf> {
             current_target_triple(),
             executable_extension()
         ));
+    #[cfg(debug_assertions)]
     candidates.push(staged_binary);
 
     candidates
@@ -162,7 +204,42 @@ mod tests {
             "dust-wave-social-definitely-missing-media-tool"
         );
         assert_eq!(resolution.source, MediaToolSource::Path);
-        assert!(!resolution.available);
+        assert_eq!(resolution.probe, MediaToolProbe::Unavailable);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probes_success_failure_and_large_output_without_pipes() {
+        let timeout = Duration::from_secs(1);
+        for (script, expected) in [
+            ("exit 0", MediaToolProbe::Available),
+            ("exit 7", MediaToolProbe::Unavailable),
+            (
+                "i=0; while [ $i -lt 20000 ]; do printf 'probe output\\n'; i=$((i+1)); done",
+                MediaToolProbe::Available,
+            ),
+        ] {
+            assert_eq!(
+                probe_command(Command::new("/bin/sh").args(["-c", script]), timeout),
+                expected
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unresponsive_probe_times_out_and_reaps_its_child() {
+        let mut child = Command::new("/bin/sleep").arg("60").spawn().unwrap();
+        let started = Instant::now();
+        assert_eq!(
+            wait_for_probe(&mut child, Duration::from_millis(60)),
+            MediaToolProbe::TimedOut
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(
+            child.try_wait().unwrap().is_some(),
+            "timed-out child must be reaped"
+        );
     }
 
     #[test]

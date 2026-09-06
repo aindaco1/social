@@ -243,6 +243,18 @@ jobs:
           fi
           npm run desktop:release:artifact-check -- "${args[@]}"
 
+      - name: Smoke packaged launch and native offline inference
+        run: |
+          npm run desktop:smoke:launch
+          npm run local-ai:native:offline -- --app "src-tauri/target/release/bundle/macos/Dust Wave Social.app" --output "$RUNNER_TEMP/native-offline.json"
+
+      - name: Upload native offline evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: dust-wave-social-native-offline
+          path: ${{ runner.temp }}/native-offline.json
+          if-no-files-found: error
+
       - name: Zip macOS app
         run: ditto -c -k --keepParent "src-tauri/target/release/bundle/macos/Dust Wave Social.app" "src-tauri/target/release/bundle/macos/Dust Wave Social.app.zip"
 
@@ -288,11 +300,12 @@ jobs:
             src-tauri/target/release/bundle/macos/*.tar.gz.sig
             src-tauri/target/release/bundle/latest.json
           )
+          node scripts/release-notes.mjs > "$RUNNER_TEMP/release-notes.md"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${artifacts[@]}" --clobber
-            gh release edit "$tag" --draft=false --prerelease=false --title "Dust Wave Social $tag"
+            gh release edit "$tag" --draft=false --prerelease=false --title "Dust Wave Social $tag" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
-            gh release create "$tag" "${artifacts[@]}" --verify-tag --generate-notes --title "Dust Wave Social $tag"
+            gh release create "$tag" "${artifacts[@]}" --verify-tag --title "Dust Wave Social $tag" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           touch "$RUNNER_TEMP/dust-wave-release-published"
 

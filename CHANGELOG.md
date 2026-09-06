@@ -4,6 +4,38 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.10 - 2026-09-06
+
+- Added System, Light, and Dark appearance, shared high-contrast colors, more
+  consistent spacing, and compact, appropriately sized dropdowns.
+- Simplified composing, media intake, and account setup. Added draft-replacement
+  protection, clearer save feedback, keyboard navigation, focus handling, and zoom/reflow improvements.
+- Fixed calendar date windows and timezone/DST handling. Reports now distinguish
+  missing provider data from measured zero and show observation freshness.
+- Added bundled native LiteRT 2.1.6 CPU upscaling on Apple Silicon macOS 14+, with
+  the existing Wasm path selected automatically on older supported macOS.
+  Static images up to 512 × 512px can be upscaled 4× with progress, cancellation,
+  preserved transparency, and a separate saved derivative. No runtime download,
+  Python installation, API key, or cloud inference is required.
+- Moved blocking media operations off the interface thread, bounded media-tool
+  probes, and improved local-media feedback, backup/restore, and credential isolation for test builds.
+- Refined Meta/TikTok onboarding and media-provider setup guidance.
+- Added a repeatable native LiteRT offline test with explicit TCP/UDP denial
+  controls; the release pipeline checks the actual packaged helper before publication.
+- Updated the transitive query-string parser and added editor attribute-boundary
+  regression coverage. The remaining Tiptap dependency advisory and its scoped
+  desktop exposure assessment are documented in `SECURITY.md`.
+
+Testing notes: Local AI Media Labs remains opt-in. Enable it in Settings, save,
+then import a small PNG/JPEG in Media and choose Upscale. Keep the original and
+review faces, text, and fine detail: AI-estimated details can be inaccurate.
+Full-app offline isolation, independent clean/older-Mac execution, and human
+output-quality approval remain unverified. Native-helper offline success is not
+full-app/WebKit offline acceptance. This official release enables those additional
+machine tests through the normal updater; it does not claim all product acceptance
+gates are complete. Back up app data before testing. The release remains Apple
+Silicon-only; Intel/universal distribution is not included.
+
 ## 0.1.9 - 2026-08-26
 
 - Replaced the Dust Wave Social desktop icon with the approved new design

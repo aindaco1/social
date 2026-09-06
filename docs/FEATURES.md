@@ -6,7 +6,7 @@ This document describes the current product surface. The canonical operator jour
 
 ## Desktop workflows
 
-The production desktop interface contains these first-class workflows:
+The desktop source contains these first-class workflows; publication and acceptance of a particular build are tracked in the launch plan:
 
 - Dashboard: local status summaries, upcoming and failed posts, provider metrics, audience history, and selectable reporting periods.
 - Posts: separate Compose and Post library modes; status tabs, keyword/account/label filters, pagination, bulk selection, post details with Edit in composer, provider previews, error history, contextual schedule/retry-time editing, retry, duplicate, and delete actions.
@@ -16,10 +16,14 @@ The production desktop interface contains these first-class workflows:
 - Connections: a Connected accounts tab for progressive provider-specific onboarding, authorization state, refresh, import, disconnect, setup warnings, and redaction-safe exports; plus a Provider setup tab for unified Keychain-backed credentials, configuration, active state, readiness feedback, API versions/tiers, setup packets, and on-demand diagnostics.
 - Analytics: provider-specific metrics, audience charts, period summaries, loading/empty/error states, and imported post performance.
 - Labels: create, edit, delete, color, filter, and composer assignment.
-- Settings: local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs.
+- Settings: System/Light/Dark appearance, local operator identity, timezone, date/time preferences, week start, default accounts, notifications, and Local AI Media Labs. Appearance applies immediately, follows live macOS changes when System is selected, and is remembered on this Mac. Scheduling and instant display use the saved workspace timezone; existing scheduled UTC instants do not move when the preference changes.
 - System: health and maintenance first, with lower-frequency recovery, media-tool, log, backup/restore, app-data, notification, and signed-updater controls disclosed on demand. One quiet signed-feed check runs when the app opens. A compact top-right updater action is available from every workflow, surfaces a newer release, changes from check to install, reports download/verification/installation progress, and relaunches into the installed version only after explicit operator approval.
 
 Migration, schema, release-readiness, raw database, provider-capability, and raw queue panels are intentionally excluded from the production UI.
+
+The global Create post / Continue draft action opens the existing composer without resetting its content. The first-account dashboard offers Add account. Shared modal keyboard behavior handles initial focus, Tab wrapping, focus return, and Escape cancellation. Theme colors reuse one semantic palette; photos, GIFs, and brand artwork are not color-inverted.
+
+Replacing unsaved composer content offers Keep editing, Save draft and continue, or Discard and continue. Explicit Save keeps the draft open with real saved/recovery feedback. Preview sits beside writing at wide widths; account/version/library controls are disclosed as needed. Media intake leads with picker/drop, with path/URL and storage details secondary. Connections keeps CSV/plan exports and batch queues under Operator tools. Reports distinguish No data from zero, label observed-day averages, and show the latest available observation date. See [UX_REVIEW.md](UX_REVIEW.md) for local verification and remaining acceptance limits.
 
 ## Provider support
 
@@ -63,12 +67,12 @@ Klipy files cannot be saved into the reusable local library without written perm
 
 The opt-in Labs surface currently includes:
 
-- Bundled LiteRT.js Wasm runtime and a checksum-validated Real-ESRGAN-x4plus TFLite model.
-- Model-backed tiled 4x image upscaling with progress and cancellation.
+- Bundled native LiteRT CPU and automatic LiteRT.js compatibility execution using the same checksum-validated Real-ESRGAN-x4plus TFLite model.
+- Model-backed tiled 4x image upscaling through one shared session interface, with progress, pre-save cancellation, transparency preservation, and processing details. Input limits, measured candidate results, and remaining distribution/hardware acceptance are maintained in the Local AI guide below.
 - Deterministic fallback upscaling and crop derivatives.
 - Provider-aware media quality preflight.
 - Metadata/profile-based local media search.
-- Editable, review-required profile-based alt-text drafts.
+- Editable, discardable, review-required profile-based alt-text drafts, with confirmation before overwriting edits. Drafts are temporary and are not automatically saved or attached to posts.
 - Original-preserving derivatives with model/runtime, dimension, source, and SHA-256 metadata.
 
 True shared image/text embeddings and model-backed image captioning are deferred. Full status and safety constraints are in [LOCAL_AI.md](LOCAL_AI.md).

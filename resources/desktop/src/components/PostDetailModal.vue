@@ -1,7 +1,10 @@
 <script setup>
 import ProviderPreviewCard from './ProviderPreviewCard.vue';
+import { vDialogFocus } from '../dialogFocus.js';
+import { formatTimestamp } from '../dateTime.js';
 
 defineProps({
+    settings: Object,
     summary: {
         type: Object,
         required: true,
@@ -57,11 +60,13 @@ const emit = defineEmits(['close', 'edit']);
 
 <template>
     <div
+        v-dialog-focus
         class="modal-backdrop"
         role="dialog"
         aria-modal="true"
         aria-labelledby="post-detail-title"
         @click.self="emit('close')"
+        @keydown.esc.stop.prevent="emit('close')"
     >
         <div class="post-detail-modal">
             <header>
@@ -130,7 +135,7 @@ const emit = defineEmits(['close', 'edit']);
                                 <span></span>
                                 <div>
                                     <strong>{{ item.label }}</strong>
-                                    <small>{{ item.at }}</small>
+                                    <small>{{ formatTimestamp(item.at, settings) }}</small>
                                     <p>{{ item.detail }}</p>
                                 </div>
                             </article>
