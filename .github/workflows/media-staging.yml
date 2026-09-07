@@ -61,6 +61,7 @@ jobs:
 
   media-staging-deploy:
     name: Deploy media staging
+    needs: media-staging-check
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_media_staging == 'true'
     environment: production
