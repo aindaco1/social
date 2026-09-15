@@ -61,8 +61,12 @@ env:
 
 jobs:
   release-check:
-    name: Release check
-    runs-on: macos-26
+    name: ${{ matrix.os == 'macos-26' && 'Release check' || 'Xcode 27 compatibility' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, xcode-27]
     if: >-
       github.ref_type != 'tag' &&
       !(github.event_name == 'workflow_dispatch' && inputs.build_bundle == 'true')
@@ -70,6 +74,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Record host and toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          xcrun --show-sdk-version
+          if [[ "${{ matrix.os }}" == "xcode-27" ]]; then
+            xcode_version="$(xcodebuild -version)"
+            xcode_first_line="${xcode_version%%$'\n'*}"
+            [[ "$xcode_first_line" == "Xcode 27" || "$xcode_first_line" == "Xcode 27."* || "$xcode_first_line" == "Xcode 27 "* ]]
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -83,12 +99,12 @@ jobs:
           components: rustfmt
 
       - name: Define Rust release cache key
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.os == 'macos-26' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: rust-release-cache
         run: ./scripts/rust-release-cache-key.sh
 
       - name: Restore Rust release compilation cache
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.os == 'macos-26' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache@v6
         with:
           path: |
@@ -104,7 +120,7 @@ jobs:
         run: npm run desktop:release:check
 
       - name: Warm exact-commit Rust release compilation
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.os == 'macos-26' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo build --manifest-path src-tauri/Cargo.toml --release --locked --lib
 
   release-bundle:
