@@ -11,7 +11,8 @@ official Apple Silicon macOS release, including the UX improvements and opt-in
 native LiteRT upscaling. The signed 0.1.9 → 0.1.10 updater/relaunch path passed;
 broader machine, provider, accessibility, and image-quality acceptance remains open.
 
-Start with [Project status and concrete next steps](docs/PROJECT_STATUS.md).
+Start with [Project status and completion plan](docs/PROJECT_STATUS.md) for the
+current evidence, sequenced work, owners, dependencies, and acceptance checklists.
 [Release operations](docs/RELEASE_OPERATIONS.md) records publication evidence,
 build/update testing, and rollback. Do not infer public release failure from absent
 local build outputs after cleanup.
@@ -75,7 +76,7 @@ composer test
 
 - [Features and limits](docs/FEATURES.md)
 - [User flows and UX regression matrix](docs/USER_FLOWS.md)
-- [Current state, acceptance gaps, and next steps](docs/PROJECT_STATUS.md)
+- [Project status, remaining work, and completion checklist](docs/PROJECT_STATUS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Provider integration setup](docs/PROVIDER_SETUP.md)
 - [Release operations](docs/RELEASE_OPERATIONS.md)

@@ -37,6 +37,7 @@ const retiredDocuments = [
     'docs/UX_REVIEW.md',
     'docs/GIF_PROVIDER_DECISION.md',
     'docs/MVP_LAUNCH_PLAN.md',
+    'docs/COMPLETION_PLAN.md',
 ];
 // These names remain valid inside docs/; reject duplicate root copies without
 // treating links to their new locations as retired-document references.
