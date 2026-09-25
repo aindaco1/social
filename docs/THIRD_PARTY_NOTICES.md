@@ -1,5 +1,9 @@
 # Third-Party Notices
 
+## Shared desktop services
+
+Dust Wave Platform Desktop Core 0.1.0 and Release Core 0.5.0 are MIT-licensed and pinned by `shared/dust-wave-platform`. The desktop bundle includes the Platform license as `licenses/DustWavePlatform-MIT.txt`.
+
 ## FFmpeg And FFprobe
 
 Dust Wave Social release builds that include bundled media sidecars use FFmpeg and FFprobe from the FFmpeg project.

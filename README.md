@@ -44,9 +44,13 @@ Prerequisites:
 Install dependencies and run the desktop app:
 
 ```sh
+git submodule update --init --recursive
 npm ci
 npm run desktop:dev
 ```
+
+The [shared desktop migration](docs/SHARED_DESKTOP_MIGRATION.md) records the
+immutable Platform dependency, validation and independent rollback.
 
 On macOS, `desktop:dev` signs the changing debug executable with the installed Developer ID identity and the stable `com.dustwave.social` identifier before launch. This keeps its Keychain access requirement aligned with the production app. If no Developer ID identity is available, debug builds default to environment-only credentials instead of repeatedly prompting for Keychain access. Do not override `DUSTWAVE_KEYCHAIN_MODE=keychain` for an ad-hoc-signed executable.
 

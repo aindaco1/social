@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createTauriUpdateManifest, githubReleaseAssetUrl } from '../shared/dust-wave-platform/packages/release-core/src/tauri-updater.js';
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -23,10 +24,6 @@ function envValue(name) {
 function fail(message) {
     console.error(message);
     process.exit(1);
-}
-
-function githubReleaseAssetName(name) {
-    return String(name || '').replace(/\s+/g, '.');
 }
 
 function hostPlatformKey() {
@@ -91,18 +88,17 @@ if (!signature) {
 }
 
 const artifactName = path.basename(artifactPath);
-const releaseAssetName = githubReleaseAssetName(artifactName);
-const manifest = {
+const manifest = createTauriUpdateManifest({
     version,
     notes,
-    pub_date: new Date().toISOString(),
+    pubDate: new Date().toISOString(),
     platforms: {
         [platform]: {
             signature,
-            url: `https://github.com/${releaseRepository}/releases/download/${encodeURIComponent(releaseTag)}/${encodeURIComponent(releaseAssetName)}`,
+            url: githubReleaseAssetUrl(`https://github.com/${releaseRepository}/releases/download/${encodeURIComponent(releaseTag)}`, artifactName),
         },
     },
-};
+});
 
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);

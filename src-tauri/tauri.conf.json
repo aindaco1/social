@@ -35,6 +35,7 @@
       "../resources/desktop/public/litert/models/": "litert-models/",
       "../native/licenses/": "litert-licenses/",
       "../docs/THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../shared/dust-wave-platform/LICENSE": "licenses/DustWavePlatform-MIT.txt",
       "native-runtime/build.json": "litert-native-build.json"
     },
     "macOS": { "frameworks": ["native-runtime/libLiteRt.dylib"] },

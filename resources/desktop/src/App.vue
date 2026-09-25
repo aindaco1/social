@@ -3,6 +3,7 @@ import { Channel, convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { createUpdateProgress } from '../../../shared/dust-wave-platform/packages/desktop-core/src/update-progress.js';
 import { check as checkForUpdate } from '@tauri-apps/plugin-updater';
 import Document from '@tiptap/extension-document';
 import History from '@tiptap/extension-history';
@@ -3343,8 +3344,7 @@ const installSoftwareUpdate = async () => {
         return;
     }
 
-    let downloadedBytes = 0;
-    let totalBytes = 0;
+    const updateProgress = createUpdateProgress();
     softwareUpdateInstalling.value = true;
     softwareUpdateError.value = '';
     softwareUpdateProgress.value = '';
@@ -3353,19 +3353,14 @@ const installSoftwareUpdate = async () => {
     try {
         const onEvent = new Channel();
         onEvent.onmessage = (event) => {
+            const { downloadedBytes, totalBytes, percentage } = updateProgress(event);
             if (event.event === 'Started') {
-                totalBytes = Number(event.data.contentLength) || 0;
-                downloadedBytes = 0;
                 softwareUpdateProgress.value = totalBytes
                     ? 'Downloading 0%'
                     : 'Downloading update';
             }
 
             if (event.event === 'Progress') {
-                downloadedBytes += Number(event.data.chunkLength) || 0;
-                const percentage = totalBytes
-                    ? Math.min(100, Math.floor((downloadedBytes / totalBytes) * 100))
-                    : 0;
                 softwareUpdateProgress.value = totalBytes
                     ? `Downloading ${percentage}% · ${formatBytes(downloadedBytes)} of ${formatBytes(totalBytes)}`
                     : `Downloaded ${formatBytes(downloadedBytes)}`;

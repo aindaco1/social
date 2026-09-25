@@ -74,7 +74,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
+      - name: Verify shared desktop dependency contract
+        run: node shared/dust-wave-platform/scripts/check-desktop-consumer.mjs
       - name: Record host and toolchain
         run: |
           sw_vers
@@ -134,9 +138,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          submodules: recursive
           fetch-depth: 0
           ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || github.sha }}
 
+      - name: Verify shared desktop dependency contract
+        run: node shared/dust-wave-platform/scripts/check-desktop-consumer.mjs
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
