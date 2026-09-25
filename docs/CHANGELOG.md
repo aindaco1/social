@@ -4,9 +4,9 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
-## Unreleased
+## 0.1.11 - 2026-09-25
 
-- Share tauri progress accounting and release-manifest helpers through the pinned Dust Wave Platform dependency. Preserve existing update consent and product-specific diagnostics behavior. See the [migration record](SHARED_DESKTOP_MIGRATION.md).
+- Share Tauri progress accounting and release-manifest helpers through the pinned Dust Wave Platform dependency. Preserve existing update consent and product-specific diagnostics behavior. See the [migration record](SHARED_DESKTOP_MIGRATION.md).
 
 ## 0.1.10 - 2026-09-06
 
