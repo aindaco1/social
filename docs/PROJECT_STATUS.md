@@ -1,7 +1,10 @@
 # Dust Wave Social: project status and completion plan
 
-Updated: 2026-09-15. Audience: project owner, engineering, and acceptance testers.
-Implementation baseline reviewed: `6e3014973063e91d2b095cb27d9b7b93c872ed07`.
+Updated: 2026-10-21. Audience: project owner, engineering, and acceptance testers.
+Current public release: `0.1.12`, source `a26d659ad70c670f82d3292d3c107e2b4b598fbd`.
+The broader product audit below remains the September 15 review of
+`6e3014973063e91d2b095cb27d9b7b93c872ed07`; only the dated security/release
+evidence was refreshed on October 21.
 
 This is the single maintained source for current status, remaining work, priorities,
 and acceptance evidence. It combines the project-status summary and detailed
@@ -18,8 +21,9 @@ Quick navigation: [current state](#where-the-project-stands),
 
 ## Summary
 
-The desktop foundation is built and 0.1.10 is published. The remaining work is a
-dependency update, resolution of the recorded font-distribution gate, a small
+The desktop foundation is built and 0.1.12 is published with the eMudhra TLS
+repair. The remaining product plan includes a separate editor dependency update,
+resolution of the recorded font-distribution gate, a small
 Instagram cleanup gap, and evidence that the released product works with real
 accounts, representative data, assistive technology, and other Macs.
 
@@ -29,8 +33,9 @@ flow is still needed for the documented TikTok review path.
 
 ## Where the project stands
 
-[Social 0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10) is the
-published Apple Silicon macOS release; 0.1.9 is the recorded rollback baseline.
+[Social 0.1.12](https://github.com/aindaco1/social/releases/tag/v0.1.12) is the
+published Apple Silicon macOS release. The retained 0.1.11 assets are a recovery
+reference; they lack the new certificate-trust fix and are not a secure TLS fallback.
 The desktop foundation is implemented. Broad user, provider, accessibility,
 other-Mac, and full-app offline acceptance remains open.
 
@@ -43,6 +48,18 @@ other-Mac, and full-app offline acceptance remains open.
 | Reliable recovery and distribution | Official signed updater hop; isolated backup/restore and redacted exports tested | Representative user-data/Keychain survival and independent clean-Mac installation |
 
 ## Evidence boundaries
+
+The October 21 security release passed all five exact-main workflows, the tag
+workflow, notarization/stapling, packaged launch and native-helper offline checks.
+Its locked reqwest transport rejected all twelve disclosed compromised TLS paths
+with `CertDistrusted` while a valid HTTPS control succeeded. Independent public
+downloads matched all five digests, the live latest feed and each other. The
+signed 0.1.11 → 0.1.12 update and relaunch passed on an isolated GitHub Mac. The
+verified public app is installed locally. See the [release evidence](release-evidence/2026-10-21-social-0.1.12.md).
+
+Those checks did not send provider posts, exercise representative real-user data,
+or repeat the September product audit. The following 0.1.10/UI evidence remains
+historical, with its original limitations.
 
 The 0.1.10 release workflow passed 156 JavaScript tests, 150 Rust tests, and both
 six-test Worker suites, then packaged-launch and native-helper offline checks.
@@ -127,13 +144,17 @@ controlled-account milestone passes.
 
 Status terms in this plan:
 
-- **Verified now:** inspected on September 15, with the boundary stated.
+- **Verified now:** in the retained product audit, inspected on September 15, with the boundary stated. October release evidence is separately dated above.
 - **Recorded:** supported by earlier repository evidence, not repeated in this audit.
 - **Open:** work or acceptance evidence is still needed.
 - **Conditional:** required only for a chosen distribution or feature scope.
 - **Inconclusive:** the attempted check cannot establish success or failure.
 
-## Audit baseline and attached files
+## September 15 audit baseline and attached files
+
+This dated table is preserved for the product worklist. The October release
+evidence above supersedes its public and installed version observations; other
+rows have not been re-audited as part of the TLS release.
 
 | Area | Evidence as of this audit | What it establishes |
 | --- | --- | --- |

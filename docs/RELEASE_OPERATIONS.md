@@ -1,6 +1,6 @@
 # Dust Wave Social release operations
 
-Updated: 2026-09-06. Audience: release maintainers and acceptance testers.
+Updated: 2026-10-21. Audience: release maintainers and acceptance testers.
 
 This runbook owns release procedures and immutable publication evidence.
 [Project status](PROJECT_STATUS.md) owns current gaps, priorities, and the go/no-go
@@ -8,7 +8,29 @@ worklist. [Provider Setup](PROVIDER_SETUP.md) owns exact integration values.
 A public engineering release does not, by itself, close every product acceptance
 gate.
 
+## Published 0.1.12 evidence
+
+[Social v0.1.12](https://github.com/aindaco1/social/releases/tag/v0.1.12) was
+published October 21, 2026 from `a26d659ad70c670f82d3292d3c107e2b4b598fbd`,
+after explicit release approval and all five exact-main workflows passed. The
+[tag workflow](https://github.com/aindaco1/social/actions/runs/39680188844)
+passed source checks, signing, notarization/stapling, mounted-DMG validation,
+packaged launch, native-helper offline checks and the public updater hop.
+
+The updater installed 62,273,778 signed bytes from 0.1.11 and relaunched as 0.1.12,
+PID 49759 → 49995, on an isolated GitHub runner. Independent downloads matched
+all five GitHub digests and the unauthenticated latest feed; the DMG, ZIP and
+updater apps had identical contents, stable signing identity and valid staples.
+The independently verified public app is installed on the maintainer's Mac.
+
+See the [immutable release evidence](release-evidence/2026-10-21-social-0.1.12.md)
+for hashes, Apple submission IDs, the twelve-chain rejection check and acceptance
+limits. The retained 0.1.11 assets are a recovery reference, not a secure TLS
+fallback: downgrading restores its earlier certificate-trust exposure.
+
 ## Published 0.1.10 evidence
+
+This section preserves the historical September release record.
 
 [Social v0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10) was
 published on 2026-09-06 from commit
@@ -104,7 +126,7 @@ Use an Apple Silicon Mac and the official build. Record model/chip, macOS versio
 starting Social version, and whether it contains existing data.
 
 1. Back up representative data from System and preserve the previous DMG.
-2. From 0.1.9, use the top-right Update action or System controls to install 0.1.10. Verify automatic relaunch and the displayed version.
+2. From 0.1.11, use the top-right Update action or System controls to install 0.1.12. Verify automatic relaunch and the displayed version.
 3. Verify drafts, media, settings, provider setup, and Keychain-backed readiness survived; reconnect only when actually required.
 4. On a separate clean macOS account/Mac, drag the stapled DMG app into /Applications, launch without a trust warning, then quit/relaunch. Do not delete the operator's data to manufacture a clean test.
 5. Follow [Using image upscaling](LOCAL_AI.md#using-image-upscaling). Record actual runtime, source/output dimensions, time, cancellation/retry, original preservation, and human output review for a transparent PNG and a photograph.
@@ -143,7 +165,7 @@ a bounded `--no-s3-acceleration` retry. Do not bypass signing or Gatekeeper.
 1. Stop affected scheduled publishing by quitting Social; preserve redacted support logs.
 2. Back up app data before uninstalling or downgrading.
 3. With release-owner approval, make a bad release undiscoverable by returning it to draft and verify the latest feed resolves to the known-good release.
-4. Install the preserved 0.1.9 DMG on affected Macs; confirm Gatekeeper, launch, and data loading. The updater is not an automatic downgrade mechanism.
+4. Prefer a forward repair. The preserved 0.1.11 DMG predates the eMudhra TLS fix, so any downgrade requires an explicit exposure decision as well as release-owner approval. If approved, confirm Gatekeeper, launch, and data loading. The updater is not an automatic downgrade mechanism.
 5. If data shape changed, restore a known-good Social backup through the supported restore flow, not ad-hoc SQLite edits. Backups exclude Keychain secrets.
 6. Revoke/reconnect provider credentials only when indicated by the incident, and verify draft/media/account behavior before resuming jobs.
 7. Record impact, owner, mitigation, and the explicit ship/no-ship decision.

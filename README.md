@@ -6,9 +6,10 @@ The repository also retains the original Mixpost Lite Laravel package while the 
 
 ## Current status
 
-[Social 0.1.10](https://github.com/aindaco1/social/releases/tag/v0.1.10) is the
-official Apple Silicon macOS release, including the UX improvements and opt-in
-native LiteRT upscaling. The signed 0.1.9 → 0.1.10 updater/relaunch path passed;
+[Social 0.1.12](https://github.com/aindaco1/social/releases/tag/v0.1.12) is the
+official Apple Silicon macOS release. It rejects the disclosed compromised eMudhra
+TLS chains while retaining the existing UX and opt-in native LiteRT upscaling.
+The signed 0.1.11 → 0.1.12 updater/relaunch path passed on an isolated CI Mac;
 broader machine, provider, accessibility, and image-quality acceptance remains open.
 
 Start with [Project status and completion plan](docs/PROJECT_STATUS.md) for the
