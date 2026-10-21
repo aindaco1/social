@@ -30,8 +30,7 @@ fn compromised_emudhra_chains_are_rejected() {
                 source = cause.source();
             }
             assert!(
-                causes.contains("InvalidCertificate")
-                    || causes.contains("invalid peer certificate"),
+                causes.contains("CertDistrusted"),
                 "{host}: failure did not establish certificate rejection: {causes}"
             );
             println!("REJECTED {host}: {causes}");
