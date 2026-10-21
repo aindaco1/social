@@ -4,6 +4,14 @@ Dust Wave Social desktop releases are tracked separately from the retained Mixpo
 
 Versions through `2.6.0` are the changelog for the retained Mixpost Lite package and do not describe Dust Wave desktop release readiness.
 
+## 0.1.12 - 2026-10-21
+
+- Reject the compromised eMudhra certificate chains in provider API requests by
+  updating the bundled Rust verifier and root certificates. Preserve existing
+  accounts, credentials, drafts, media, and updater signing keys.
+- Add an explicit TLS acceptance check covering all 12 published compromised
+  chains and a valid HTTPS control. Network failures cannot count as distrust.
+
 ## 0.1.11 - 2026-09-25
 
 - Share Tauri progress accounting and release-manifest helpers through the pinned Dust Wave Platform dependency. Preserve existing update consent and product-specific diagnostics behavior. See the [migration record](SHARED_DESKTOP_MIGRATION.md).
