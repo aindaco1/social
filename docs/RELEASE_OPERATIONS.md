@@ -46,6 +46,7 @@ Local release automation reads existing Apple/updater material from the sibling
 ```sh
 npm ci
 npm run desktop:release:preflight
+npm run desktop:test:tls
 npm run mvp:launch:readiness
 npm run desktop:release:build:notarized:with-media-and-updater
 npm run desktop:macos:notarize
@@ -58,6 +59,13 @@ The build wrapper runs `desktop:release:check` once. Media must be the reviewed
 LGPL-only sidecars built with `npm run desktop:media:build-lgpl`; keep the source,
 hashes, build flags, and licenses in [Third-party notices](THIRD_PARTY_NOTICES.md).
 Do not substitute arbitrary Homebrew binaries or GPL/nonfree builds.
+
+The opt-in TLS check uses the locked application's reqwest/rustls graph against
+the eMudhra disclosure's 12 public test hosts and a valid HTTPS control. A DNS,
+timeout, or unrelated transport failure is incomplete evidence and fails the
+check. The 0.1.12 dependency update uses rustls-webpki 0.103.16 and webpki roots
+1.0.10; a successful source probe still requires rebuilding and validating the
+signed application before treating an installed version as fixed.
 
 Generated readiness output is `artifacts/release-readiness.md`, deliberately
 ignored by Git. It describes the current checkout, not public-release availability.

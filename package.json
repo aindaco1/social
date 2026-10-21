@@ -1,6 +1,6 @@
 {
     "name": "social",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "private": true,
     "type": "module",
     "scripts": {
@@ -45,6 +45,7 @@
         "desktop:build:with-media-and-updater": "node scripts/build-desktop-release.mjs --media --updater",
         "desktop:fmt:check": "cd src-tauri && cargo fmt --check",
         "desktop:test": "cd src-tauri && cargo test",
+        "desktop:test:tls": "cd src-tauri && cargo test --locked --test tls_trust -- --ignored --nocapture",
         "desktop:release:check": "npm run desktop:target:prepare && npm run desktop:release:version:check && npm run desktop:release:packaging:test && npm run desktop:vite:build && npm run local-ai:assets:check && npm run desktop:ui:test && npm run desktop:fmt:check && npm run desktop:test && npm run tiktok:broker:test && npm run media:staging:test",
         "desktop:release:build": "npm run desktop:release:check && npm run desktop:build",
         "desktop:release:build:with-media": "npm run desktop:release:check && npm run desktop:build:with-media",
